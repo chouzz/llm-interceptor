@@ -16,6 +16,7 @@ from cci import __version__
 from cci.config import get_cert_info, load_config
 from cci.logger import log_startup_banner, setup_logger
 from cci.merger import merge_streams
+from cci.splitter import split_records
 from cci.storage import count_records
 
 console = Console()
@@ -212,6 +213,62 @@ def merge(input_file: str, output_file: str) -> None:
         console.print()
         console.print(table)
         console.print(f"\n[green]✓ Output saved to:[/] {output_file}")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/] Input file not found: {input_file}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+
+@main.command()
+@click.option(
+    "--input",
+    "-i",
+    "input_file",
+    type=click.Path(exists=True),
+    required=True,
+    help="Input merged JSONL file",
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    "output_dir",
+    type=click.Path(),
+    default="./split_output",
+    help="Output directory for split files (default: ./split_output)",
+)
+def split(input_file: str, output_dir: str) -> None:
+    """
+    Split merged JSONL into individual text files for analysis.
+
+    Reads a merged JSONL file and produces individual text files
+    containing the request prompt and AI response for each record.
+
+    Example:
+
+        cci split --input merged.jsonl --output-dir ./analysis
+    """
+    setup_logger("INFO")
+
+    console.print(f"[cyan]Splitting:[/] {input_file} → {output_dir}/")
+
+    try:
+        stats = split_records(input_file, output_dir)
+
+        # Display results
+        table = Table(title="Split Statistics", show_header=False)
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Total Records", str(stats["total_records"]))
+        table.add_row("Files Created", str(stats["files_created"]))
+        table.add_row("Errors", str(stats["errors"]))
+
+        console.print()
+        console.print(table)
+        console.print(f"\n[green]✓ Output saved to:[/] {output_dir}/")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/] Input file not found: {input_file}")
