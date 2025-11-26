@@ -135,6 +135,18 @@ class RecordSplitter:
         response_content = self._extract_response_content(record.get("response_text", ""))
         lines.append(response_content)
 
+        # Tool calls section (if present)
+        tool_calls = record.get("tool_calls", [])
+        if tool_calls:
+            lines.append("")
+            lines.append(self.SEPARATOR)
+            lines.append("TOOL CALLS")
+            lines.append(self.SEPARATOR)
+            lines.append("")
+
+            tool_calls_content = self._format_tool_calls(tool_calls)
+            lines.append(tool_calls_content)
+
         return "\n".join(lines)
 
     def _extract_request_content(self, request_body: Any) -> str:
@@ -187,6 +199,43 @@ class RecordSplitter:
         # Also handle \t for tabs
         result = result.replace("\\t", "\t")
         return result
+
+    def _format_tool_calls(self, tool_calls: list[dict[str, Any]]) -> str:
+        """
+        Format tool calls into readable text.
+
+        Args:
+            tool_calls: List of tool call dictionaries with id, name, and input
+
+        Returns:
+            Formatted text representation of tool calls
+        """
+        lines = []
+
+        for i, tool_call in enumerate(tool_calls, start=1):
+            tool_id = tool_call.get("id", "")
+            tool_name = tool_call.get("name", "")
+            tool_input = tool_call.get("input")
+
+            lines.append(f"[{i}] {tool_name}")
+            lines.append(f"    ID: {tool_id}")
+
+            if tool_input:
+                # Format input as pretty-printed JSON
+                if isinstance(tool_input, dict):
+                    input_str = json.dumps(tool_input, indent=4, ensure_ascii=False)
+                    # Indent each line for nested display
+                    indented_input = "\n".join(
+                        "    " + line for line in input_str.split("\n")
+                    )
+                    lines.append(f"    Input:")
+                    lines.append(indented_input)
+                else:
+                    lines.append(f"    Input: {tool_input}")
+
+            lines.append("")  # Blank line between tool calls
+
+        return "\n".join(lines)
 
 
 def split_records(input_path: str | Path, output_dir: str | Path) -> dict[str, int]:
