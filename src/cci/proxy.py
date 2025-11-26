@@ -61,8 +61,6 @@ class CCIAddon:
         # Track in-flight requests
         self._request_times: dict[int, float] = {}
         self._request_ids: dict[int, str] = {}
-        self._chunk_counts: dict[int, int] = {}
-        self._chunk_buffers: dict[int, list[dict[str, Any]]] = {}
 
     def request(self, flow: http.HTTPFlow) -> None:
         """
@@ -86,8 +84,6 @@ class CCIAddon:
         flow_id = id(flow)
         self._request_ids[flow_id] = request_id
         self._request_times[flow_id] = time.time()
-        self._chunk_counts[flow_id] = 0
-        self._chunk_buffers[flow_id] = []
 
         # Parse headers (with masking)
         headers = self._mask_headers(dict(flow.request.headers))
@@ -139,18 +135,32 @@ class CCIAddon:
         )
 
         if is_streaming:
-            # For streaming, write meta record with buffered chunks info
-            chunk_buffer = self._chunk_buffers.get(flow_id, [])
+            # For streaming SSE responses, parse the complete body into chunks
+            sse_events = self._parse_sse_body(flow.response.content)
+            
+            # Write individual chunk records for each SSE event
+            for chunk_index, event_content in enumerate(sse_events):
+                chunk_record = ResponseChunkRecord(
+                    request_id=request_id,
+                    timestamp=datetime.now(timezone.utc),
+                    status_code=flow.response.status_code,
+                    chunk_index=chunk_index,
+                    content=event_content,
+                )
+                self.writer.write_record(chunk_record)
+                log_streaming_progress(request_id, chunk_index)
+            
+            # Write meta record with chunk count
             meta_record = ResponseMetaRecord(
                 request_id=request_id,
                 total_latency_ms=latency_ms,
                 status_code=flow.response.status_code,
-                total_chunks=len(chunk_buffer),
+                total_chunks=len(sse_events),
             )
             self.writer.write_record(meta_record)
             self._logger.info(
-                "Streaming response complete: %d chunks in %.0fms",
-                len(chunk_buffer), latency_ms
+                "Streaming response complete: %d events in %.0fms",
+                len(sse_events), latency_ms
             )
         else:
             # Non-streaming response - capture complete body
@@ -187,7 +197,7 @@ class CCIAddon:
         """
         Handle response headers (called before body is received).
 
-        Used to detect streaming responses and set up chunk capture.
+        Used to detect streaming responses and log info.
         """
         url = flow.request.pretty_url
         if not self.url_filter.should_capture(url):
@@ -195,47 +205,53 @@ class CCIAddon:
             
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
-            self._logger.debug("Setting up streaming capture for %s", url)
-            # Enable streaming mode
-            flow.response.stream = True
+            self._logger.debug("Detected streaming response for %s", url)
+            # Don't set stream=True, let mitmproxy buffer the complete response
+            # This ensures we get the full SSE content in the response hook
 
-    def response_body_streaming(self, flow: http.HTTPFlow, chunk: bytes) -> bytes:
+    def _parse_sse_body(self, content: bytes | None) -> list[Any]:
         """
-        Handle streaming response body chunks.
-
-        Called for each chunk of a streaming response.
-        """
-        url = flow.request.pretty_url
-        if not self.url_filter.should_capture(url):
-            return chunk
-
-        flow_id = id(flow)
-        request_id = self._request_ids.get(flow_id)
+        Parse a complete SSE response body into individual events.
         
-        if request_id and chunk:
-            chunk_index = self._chunk_counts.get(flow_id, 0)
+        SSE format: each event is "data: {...}\n\n"
+        """
+        if not content:
+            return []
+        
+        events = []
+        try:
+            text = content.decode("utf-8")
             
-            # Parse SSE chunk
-            chunk_content = self._parse_sse_chunk(chunk)
-
-            # Create chunk record
-            record = ResponseChunkRecord(
-                request_id=request_id,
-                timestamp=datetime.now(timezone.utc),
-                status_code=flow.response.status_code,
-                chunk_index=chunk_index,
-                content=chunk_content,
-            )
-            self.writer.write_record(record)
+            # Split by double newline to get individual events
+            raw_events = text.split("\n\n")
             
-            # Store in buffer for summary
-            if flow_id in self._chunk_buffers:
-                self._chunk_buffers[flow_id].append(chunk_content)
+            for raw_event in raw_events:
+                raw_event = raw_event.strip()
+                if not raw_event:
+                    continue
+                    
+                # Parse each line of the event
+                for line in raw_event.split("\n"):
+                    if line.startswith("data:"):
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            events.append({"done": True})
+                        else:
+                            try:
+                                events.append(json.loads(data))
+                            except json.JSONDecodeError:
+                                events.append({"raw": data})
+                    elif line.startswith("event:"):
+                        # Handle event type if present
+                        event_type = line[6:].strip()
+                        if events and isinstance(events[-1], dict):
+                            events[-1]["_event_type"] = event_type
             
-            self._chunk_counts[flow_id] = chunk_index + 1
-            log_streaming_progress(request_id, chunk_index)
+            return events
             
-        return chunk
+        except Exception as e:
+            self._logger.debug("Failed to parse SSE body: %s", e)
+            return [{"error": str(e), "raw": content[:500].hex() if content else ""}]
 
     def _parse_body(self, content: bytes | None, content_type: str | None) -> Any:
         """Parse request/response body based on content type."""
@@ -262,28 +278,6 @@ class CCIAddon:
         except Exception as e:
             self._logger.debug("Failed to parse body: %s", e)
             return f"<parse error: {e}>"
-
-    def _parse_sse_chunk(self, chunk: bytes) -> Any:
-        """Parse a Server-Sent Events chunk."""
-        try:
-            text = chunk.decode("utf-8")
-
-            # SSE format: "data: {...}\n\n"
-            lines = text.strip().split("\n")
-            for line in lines:
-                if line.startswith("data:"):
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        return {"done": True}
-                    try:
-                        return json.loads(data)
-                    except json.JSONDecodeError:
-                        return {"raw": data}
-
-            return {"raw": text}
-
-        except Exception as e:
-            return {"error": str(e), "raw": chunk.hex()[:100]}
 
     def _mask_headers(self, headers: dict[str, str]) -> dict[str, str]:
         """Mask sensitive headers."""
@@ -350,8 +344,6 @@ class CCIAddon:
         """Clean up tracking data for a completed flow."""
         self._request_times.pop(flow_id, None)
         self._request_ids.pop(flow_id, None)
-        self._chunk_counts.pop(flow_id, None)
-        self._chunk_buffers.pop(flow_id, None)
 
 
 async def run_proxy(
