@@ -156,7 +156,7 @@ class StreamMerger:
         # Write merged records
         self._logger.info("Writing %d merged records to %s", len(merged_records), self.output_path)
 
-        with JSONLWriter(self.output_path) as writer:
+        with JSONLWriter(self.output_path, append=False) as writer:
             for record in merged_records:
                 writer.write_record(record)
 

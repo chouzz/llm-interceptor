@@ -27,6 +27,7 @@ class JSONLWriter:
         output_path: str | Path,
         pretty: bool = False,
         max_size_mb: int = 0,
+        append: bool = True,
     ):
         """
         Initialize the JSONL writer.
@@ -35,10 +36,12 @@ class JSONLWriter:
             output_path: Path to the output JSONL file
             pretty: If True, write pretty-printed JSON (one record per multiple lines)
             max_size_mb: Maximum file size in MB before rotation (0 = no rotation)
+            append: If True, append to existing file; if False, overwrite
         """
         self.output_path = Path(output_path)
         self.pretty = pretty
         self.max_size_mb = max_size_mb
+        self.append = append
         self._lock = threading.Lock()
         self._file: TextIO | None = None
         self._record_count = 0
@@ -49,7 +52,8 @@ class JSONLWriter:
 
     def __enter__(self) -> "JSONLWriter":
         """Open the file for writing."""
-        self._file = open(self.output_path, "a", encoding="utf-8")
+        mode = "a" if self.append else "w"
+        self._file = open(self.output_path, mode, encoding="utf-8")
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -61,7 +65,8 @@ class JSONLWriter:
     def open(self) -> None:
         """Open the file for writing."""
         if self._file is None:
-            self._file = open(self.output_path, "a", encoding="utf-8")
+            mode = "a" if self.append else "w"
+            self._file = open(self.output_path, mode, encoding="utf-8")
 
     def close(self) -> None:
         """Close the file."""
