@@ -241,10 +241,14 @@ def merge(input_file: str, output_file: str) -> None:
 )
 def split(input_file: str, output_dir: str) -> None:
     """
-    Split merged JSONL into individual text files for analysis.
+    Split merged JSONL into individual JSON files for analysis.
 
-    Reads a merged JSONL file and produces individual text files
-    containing the request prompt and AI response for each record.
+    Reads a merged JSONL file and produces individual JSON files
+    for each request and response record.
+
+    Output files are named: {index:03d}_{type}_{timestamp}.json
+    Example files: 001_request_2025-11-26_14-12-47.json
+                   001_response_2025-11-26_14-12-47.json
 
     Example:
 
@@ -263,7 +267,8 @@ def split(input_file: str, output_dir: str) -> None:
         table.add_column("Value", style="green")
 
         table.add_row("Total Records", str(stats["total_records"]))
-        table.add_row("Files Created", str(stats["files_created"]))
+        table.add_row("Request Files", str(stats["request_files"]))
+        table.add_row("Response Files", str(stats["response_files"]))
         table.add_row("Errors", str(stats["errors"]))
 
         console.print()
