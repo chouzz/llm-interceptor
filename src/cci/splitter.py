@@ -228,7 +228,7 @@ class RecordSplitter:
                     indented_input = "\n".join(
                         "    " + line for line in input_str.split("\n")
                     )
-                    lines.append(f"    Input:")
+                    lines.append("    Input:")
                     lines.append(indented_input)
                 else:
                     lines.append(f"    Input: {tool_input}")

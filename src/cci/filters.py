@@ -5,7 +5,7 @@ Provides pattern-based filtering to capture only relevant LLM API traffic.
 """
 
 import re
-from typing import Pattern
+from re import Pattern
 
 from cci.config import FilterConfig
 from cci.logger import get_logger

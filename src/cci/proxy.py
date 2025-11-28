@@ -69,10 +69,10 @@ class CCIAddon:
         Called when a client request is received by the proxy.
         """
         url = flow.request.pretty_url
-        
+
         # Log all requests in debug mode
         self._logger.debug("Intercepted request: %s %s", flow.request.method, url)
-        
+
         if not self.url_filter.should_capture(url):
             self._logger.debug("URL not matched, skipping: %s", url)
             return
@@ -137,7 +137,7 @@ class CCIAddon:
         if is_streaming:
             # For streaming SSE responses, parse the complete body into chunks
             sse_events = self._parse_sse_body(flow.response.content)
-            
+
             # Write individual chunk records for each SSE event
             for chunk_index, event_content in enumerate(sse_events):
                 chunk_record = ResponseChunkRecord(
@@ -149,7 +149,7 @@ class CCIAddon:
                 )
                 self.writer.write_record(chunk_record)
                 log_streaming_progress(request_id, chunk_index)
-            
+
             # Write meta record with chunk count
             meta_record = ResponseMetaRecord(
                 request_id=request_id,
@@ -202,7 +202,7 @@ class CCIAddon:
         url = flow.request.pretty_url
         if not self.url_filter.should_capture(url):
             return
-            
+
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
             self._logger.debug("Detected streaming response for %s", url)
@@ -212,24 +212,24 @@ class CCIAddon:
     def _parse_sse_body(self, content: bytes | None) -> list[Any]:
         """
         Parse a complete SSE response body into individual events.
-        
+
         SSE format: each event is "data: {...}\n\n"
         """
         if not content:
             return []
-        
+
         events = []
         try:
             text = content.decode("utf-8")
-            
+
             # Split by double newline to get individual events
             raw_events = text.split("\n\n")
-            
+
             for raw_event in raw_events:
                 raw_event = raw_event.strip()
                 if not raw_event:
                     continue
-                    
+
                 # Parse each line of the event
                 for line in raw_event.split("\n"):
                     if line.startswith("data:"):
@@ -246,9 +246,9 @@ class CCIAddon:
                         event_type = line[6:].strip()
                         if events and isinstance(events[-1], dict):
                             events[-1]["_event_type"] = event_type
-            
+
             return events
-            
+
         except Exception as e:
             self._logger.debug("Failed to parse SSE body: %s", e)
             return [{"error": str(e), "raw": content[:500].hex() if content else ""}]

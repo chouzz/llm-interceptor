@@ -128,14 +128,16 @@ def log_error(message: str, exc: Exception | None = None) -> None:
 def log_startup_banner(host: str, port: int) -> None:
     """Log the startup banner."""
     console.print()
-    console.print("[bold cyan]╔══════════════════════════════════════════════════════════╗[/]")
-    console.print("[bold cyan]║[/]  [bold white]Claude-Code-Inspector (CCI)[/]                            [bold cyan]║[/]")
-    console.print("[bold cyan]║[/]  [dim]MITM Proxy for LLM API Traffic Analysis[/]               [bold cyan]║[/]")
-    console.print("[bold cyan]╠══════════════════════════════════════════════════════════╣[/]")
-    console.print(f"[bold cyan]║[/]  Proxy listening on: [bold green]{host}:{port}[/]                 [bold cyan]║[/]")
-    console.print("[bold cyan]║[/]                                                          [bold cyan]║[/]")
-    console.print("[bold cyan]║[/]  [dim]Configure your HTTP/HTTPS proxy to point here[/]         [bold cyan]║[/]")
-    console.print("[bold cyan]║[/]  [dim]Press Ctrl+C to stop capturing[/]                        [bold cyan]║[/]")
-    console.print("[bold cyan]╚══════════════════════════════════════════════════════════╝[/]")
+    # fmt: off
+    console.print("[bold cyan]╔══════════════════════════════════════════════════════════╗[/]")  # noqa: E501
+    console.print("[bold cyan]║[/]  [bold white]Claude-Code-Inspector (CCI)[/]                            [bold cyan]║[/]")  # noqa: E501
+    console.print("[bold cyan]║[/]  [dim]MITM Proxy for LLM API Traffic Analysis[/]               [bold cyan]║[/]")  # noqa: E501
+    console.print("[bold cyan]╠══════════════════════════════════════════════════════════╣[/]")  # noqa: E501
+    console.print(f"[bold cyan]║[/]  Proxy listening on: [bold green]{host}:{port}[/]                 [bold cyan]║[/]")  # noqa: E501
+    console.print("[bold cyan]║[/]                                                          [bold cyan]║[/]")  # noqa: E501
+    console.print("[bold cyan]║[/]  [dim]Configure your HTTP/HTTPS proxy to point here[/]         [bold cyan]║[/]")  # noqa: E501
+    console.print("[bold cyan]║[/]  [dim]Press Ctrl+C to stop capturing[/]                        [bold cyan]║[/]")  # noqa: E501
+    console.print("[bold cyan]╚══════════════════════════════════════════════════════════╝[/]")  # noqa: E501
+    # fmt: on
     console.print()
 

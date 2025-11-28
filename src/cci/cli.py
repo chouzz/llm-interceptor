@@ -334,9 +334,11 @@ def _show_cert_help() -> None:
     console.print()
 
     console.print(f"[dim]Certificate path:[/] {cert_info['cert_path']}")
-    console.print(
-        f"[dim]Certificate exists:[/] {'[green]Yes[/]' if cert_info['exists'] else '[yellow]No (will be generated on first run)[/]'}"
+    exists_text = (
+        "[green]Yes[/]" if cert_info["exists"]
+        else "[yellow]No (will be generated on first run)[/]"
     )
+    console.print(f"[dim]Certificate exists:[/] {exists_text}")
     console.print()
 
     console.print("[bold]macOS:[/]")
@@ -349,7 +351,10 @@ def _show_cert_help() -> None:
 
     console.print("[bold]Linux:[/]")
     console.print("  # Ubuntu/Debian:")
-    console.print(f"  sudo cp {cert_info['cert_path']} /usr/local/share/ca-certificates/mitmproxy.crt")
+    console.print(
+        f"  sudo cp {cert_info['cert_path']} "
+        "/usr/local/share/ca-certificates/mitmproxy.crt"
+    )
     console.print("  sudo update-ca-certificates")
     console.print()
     console.print("  # Fedora/RHEL:")
