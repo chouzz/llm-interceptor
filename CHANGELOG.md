@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-11-28
+
+### Added
+
+- **New `split` command** - Split JSONL trace files into individual JSON files for easier analysis
+  - Output individual JSON files for each request and response
+  - Support for extracting tool_calls from messages
+- **Enhanced `merge` command**
+  - Added tool_calls extraction support
+  - Output separate request and response lines for better organization
+- **JSONLWriter improvements**
+  - Added file overwrite option for more flexible output handling
+
+### Fixed
+
+- Corrected SSE streaming response capture for more reliable data collection
+
+### Changed
+
+- Improved code formatting and readability throughout the codebase
+
+---
+
 ## [1.0.0] - 2025-11-25
 
 ### Added

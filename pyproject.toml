@@ -1,6 +1,6 @@
 [project]
 name = "claude-code-inspector"
-version = "1.0.0"
+version = "1.1.0"
 description = "A MITM proxy tool to intercept, analyze and log AI coding assistant communications with LLM APIs"
 readme = "README.md"
 license = { text = "MIT" }
