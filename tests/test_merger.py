@@ -4,10 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-import pytest
-
 from cci.merger import StreamMerger
-from cci.models import ToolCall
 
 
 class TestExtractTextFromChunks:
@@ -473,11 +470,438 @@ class TestExtractToolCallsFromBody:
         assert result == []
 
 
-class TestStreamMergerIntegration:
-    """Integration tests for the full merge workflow."""
+class TestDetectApiFormat:
+    """Test API format detection from chunks."""
 
-    def test_merge_anthropic_streaming_request(self, tmp_path: Path) -> None:
-        """Test merging a complete Anthropic streaming request."""
+    def test_detect_anthropic_message_start(self, tmp_path: Path) -> None:
+        """Test detecting Anthropic format from message_start."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {"content": {"type": "message_start", "message": {"id": "msg_123"}}},
+        ]
+
+        result = merger._detect_api_format(chunks)
+        assert result == "anthropic"
+
+    def test_detect_anthropic_content_block_start(self, tmp_path: Path) -> None:
+        """Test detecting Anthropic format from content_block_start."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {"content": {"type": "content_block_start", "index": 0}},
+        ]
+
+        result = merger._detect_api_format(chunks)
+        assert result == "anthropic"
+
+    def test_detect_anthropic_ping(self, tmp_path: Path) -> None:
+        """Test detecting Anthropic format from ping."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {"content": {"type": "ping"}},
+        ]
+
+        result = merger._detect_api_format(chunks)
+        assert result == "anthropic"
+
+    def test_detect_openai_choices(self, tmp_path: Path) -> None:
+        """Test detecting OpenAI format from choices."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {"content": {"choices": [{"delta": {"content": "Hello"}}]}},
+        ]
+
+        result = merger._detect_api_format(chunks)
+        assert result == "openai"
+
+    def test_detect_default_anthropic(self, tmp_path: Path) -> None:
+        """Test default to anthropic for unknown format."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {"content": {"unknown": "data"}},
+        ]
+
+        result = merger._detect_api_format(chunks)
+        assert result == "anthropic"
+
+
+class TestRebuildAnthropicResponse:
+    """Test rebuilding Anthropic API response from chunks."""
+
+    def test_rebuild_basic_text_response(self, tmp_path: Path) -> None:
+        """Test rebuilding a basic text response."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "timestamp": "2025-01-01T12:00:00Z",
+                "content": {
+                    "type": "message_start",
+                    "message": {
+                        "id": "msg_123",
+                        "model": "claude-3-sonnet",
+                        "role": "assistant",
+                        "usage": {"input_tokens": 10, "output_tokens": 0},
+                    },
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "Hello "},
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "World!"},
+                },
+            },
+            {
+                "content": {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn"},
+                    "usage": {"output_tokens": 5},
+                },
+            },
+        ]
+
+        result = merger._rebuild_anthropic_response("req_123", chunks, {})
+
+        assert result["type"] == "response"
+        assert result["request_id"] == "req_123"
+        assert result["status_code"] == 200
+        assert result["body"]["id"] == "msg_123"
+        assert result["body"]["model"] == "claude-3-sonnet"
+        assert result["body"]["role"] == "assistant"
+        assert result["body"]["stop_reason"] == "end_turn"
+        assert len(result["body"]["content"]) == 1
+        assert result["body"]["content"][0]["type"] == "text"
+        assert result["body"]["content"][0]["text"] == "Hello World!"
+
+    def test_rebuild_response_with_tool_use(self, tmp_path: Path) -> None:
+        """Test rebuilding response with tool use."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "content": {
+                    "type": "message_start",
+                    "message": {
+                        "id": "msg_456",
+                        "model": "claude-3-sonnet",
+                        "role": "assistant",
+                        "usage": {},
+                    },
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "I'll help."},
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "tool_abc",
+                        "name": "read_file",
+                    },
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_delta",
+                    "index": 1,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": '{"path": "/test.txt"}',
+                    },
+                },
+            },
+            {
+                "content": {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "tool_use"},
+                },
+            },
+        ]
+
+        result = merger._rebuild_anthropic_response("req_456", chunks, {})
+
+        assert len(result["body"]["content"]) == 2
+        assert result["body"]["content"][0]["type"] == "text"
+        assert result["body"]["content"][0]["text"] == "I'll help."
+        assert result["body"]["content"][1]["type"] == "tool_use"
+        assert result["body"]["content"][1]["id"] == "tool_abc"
+        assert result["body"]["content"][1]["name"] == "read_file"
+        assert result["body"]["content"][1]["input"] == {"path": "/test.txt"}
+        assert result["body"]["stop_reason"] == "tool_use"
+
+    def test_rebuild_with_thinking_block(self, tmp_path: Path) -> None:
+        """Test rebuilding response with thinking block."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "content": {
+                    "type": "message_start",
+                    "message": {
+                        "id": "msg_789",
+                        "model": "claude-3-sonnet",
+                        "role": "assistant",
+                        "usage": {},
+                    },
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "thinking", "thinking": ""},
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "thinking_delta", "thinking": "Let me think..."},
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            },
+            {
+                "content": {
+                    "type": "content_block_delta",
+                    "index": 1,
+                    "delta": {"type": "text_delta", "text": "Here's my answer."},
+                },
+            },
+        ]
+
+        result = merger._rebuild_anthropic_response("req_789", chunks, {})
+
+        assert len(result["body"]["content"]) == 2
+        assert result["body"]["content"][0]["type"] == "thinking"
+        assert result["body"]["content"][0]["thinking"] == "Let me think..."
+        assert result["body"]["content"][1]["type"] == "text"
+        assert result["body"]["content"][1]["text"] == "Here's my answer."
+
+
+class TestRebuildOpenAIResponse:
+    """Test rebuilding OpenAI API response from chunks."""
+
+    def test_rebuild_basic_text_response(self, tmp_path: Path) -> None:
+        """Test rebuilding a basic OpenAI text response."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "timestamp": "2025-01-01T12:00:00Z",
+                "content": {
+                    "id": "chatcmpl-123",
+                    "model": "gpt-4",
+                    "created": 1704110400,
+                    "choices": [{"index": 0, "delta": {"role": "assistant"}}],
+                },
+            },
+            {
+                "content": {
+                    "choices": [{"index": 0, "delta": {"content": "Hello "}}],
+                },
+            },
+            {
+                "content": {
+                    "choices": [{"index": 0, "delta": {"content": "World!"}}],
+                },
+            },
+            {
+                "content": {
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                    "usage": {
+                        "prompt_tokens": 10,
+                        "completion_tokens": 5,
+                        "total_tokens": 15,
+                    },
+                },
+            },
+        ]
+
+        result = merger._rebuild_openai_response("req_123", chunks, {})
+
+        assert result["type"] == "response"
+        assert result["request_id"] == "req_123"
+        assert result["status_code"] == 200
+        assert result["body"]["id"] == "chatcmpl-123"
+        assert result["body"]["model"] == "gpt-4"
+        assert result["body"]["created"] == 1704110400
+        assert len(result["body"]["choices"]) == 1
+        assert result["body"]["choices"][0]["message"]["role"] == "assistant"
+        assert result["body"]["choices"][0]["message"]["content"] == "Hello World!"
+        assert result["body"]["choices"][0]["finish_reason"] == "stop"
+        assert result["body"]["usage"]["total_tokens"] == 15
+
+    def test_rebuild_response_with_tool_calls(self, tmp_path: Path) -> None:
+        """Test rebuilding OpenAI response with tool calls."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "content": {
+                    "id": "chatcmpl-456",
+                    "model": "gpt-4",
+                    "choices": [{"index": 0, "delta": {"role": "assistant"}}],
+                },
+            },
+            {
+                "content": {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_abc",
+                                        "type": "function",
+                                        "function": {"name": "get_weather", "arguments": ""},
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                },
+            },
+            {
+                "content": {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": [
+                                    {"index": 0, "function": {"arguments": '{"loc'}}
+                                ]
+                            },
+                        }
+                    ],
+                },
+            },
+            {
+                "content": {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": [
+                                    {"index": 0, "function": {"arguments": 'ation": "Tokyo"}'}}
+                                ]
+                            },
+                        }
+                    ],
+                },
+            },
+            {
+                "content": {
+                    "choices": [
+                        {"index": 0, "delta": {}, "finish_reason": "tool_calls"}
+                    ],
+                },
+            },
+        ]
+
+        result = merger._rebuild_openai_response("req_456", chunks, {})
+
+        assert len(result["body"]["choices"]) == 1
+        message = result["body"]["choices"][0]["message"]
+        assert "tool_calls" in message
+        assert len(message["tool_calls"]) == 1
+        assert message["tool_calls"][0]["id"] == "call_abc"
+        assert message["tool_calls"][0]["function"]["name"] == "get_weather"
+        assert message["tool_calls"][0]["function"]["arguments"] == '{"location": "Tokyo"}'
+        assert result["body"]["choices"][0]["finish_reason"] == "tool_calls"
+
+    def test_rebuild_with_multiple_choices(self, tmp_path: Path) -> None:
+        """Test rebuilding OpenAI response with multiple choices."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "content": {
+                    "id": "chatcmpl-789",
+                    "model": "gpt-4",
+                    "choices": [
+                        {"index": 0, "delta": {"role": "assistant"}},
+                        {"index": 1, "delta": {"role": "assistant"}},
+                    ],
+                },
+            },
+            {
+                "content": {
+                    "choices": [
+                        {"index": 0, "delta": {"content": "First"}},
+                        {"index": 1, "delta": {"content": "Second"}},
+                    ],
+                },
+            },
+            {
+                "content": {
+                    "choices": [
+                        {"index": 0, "finish_reason": "stop"},
+                        {"index": 1, "finish_reason": "stop"},
+                    ],
+                },
+            },
+        ]
+
+        result = merger._rebuild_openai_response("req_789", chunks, {})
+
+        assert len(result["body"]["choices"]) == 2
+        assert result["body"]["choices"][0]["message"]["content"] == "First"
+        assert result["body"]["choices"][1]["message"]["content"] == "Second"
+
+
+class TestStreamMergerIntegration:
+    """Integration tests for the full merge workflow with new output format."""
+
+    def test_merge_anthropic_streaming_outputs_request_response_lines(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that merge outputs separate request and response lines."""
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"
 
@@ -485,7 +909,6 @@ class TestStreamMergerIntegration:
         timestamp = "2025-01-01T12:00:00Z"
 
         records = [
-            # Request
             {
                 "type": "request",
                 "id": request_id,
@@ -494,261 +917,21 @@ class TestStreamMergerIntegration:
                 "url": "https://api.anthropic.com/v1/messages",
                 "body": {"model": "claude-3-sonnet", "messages": []},
             },
-            # Streaming chunks
             {
                 "type": "response_chunk",
                 "request_id": request_id,
                 "status_code": 200,
                 "chunk_index": 0,
-                "content": {"delta": {"text": "Hello "}},
-            },
-            {
-                "type": "response_chunk",
-                "request_id": request_id,
-                "status_code": 200,
-                "chunk_index": 1,
-                "content": {"delta": {"text": "World!"}},
-            },
-            # Meta
-            {
-                "type": "response_meta",
-                "request_id": request_id,
-                "status_code": 200,
-                "total_latency_ms": 500,
-                "total_chunks": 2,
-            },
-        ]
-
-        # Write input file
-        with open(input_file, "w") as f:
-            for record in records:
-                f.write(json.dumps(record) + "\n")
-
-        # Merge
-        merger = StreamMerger(input_file, output_file)
-        stats = merger.merge()
-
-        assert stats["streaming_requests"] == 1
-        assert stats["total_chunks_processed"] == 2
-
-        # Verify output
-        with open(output_file) as f:
-            merged = json.loads(f.readline())
-
-        assert merged["request_id"] == request_id
-        assert merged["response_text"] == "Hello World!"
-        assert merged["chunk_count"] == 2
-        assert merged["total_latency_ms"] == 500
-
-    def test_merge_openai_streaming_request(self, tmp_path: Path) -> None:
-        """Test merging a complete OpenAI streaming request."""
-        input_file = tmp_path / "input.jsonl"
-        output_file = tmp_path / "output.jsonl"
-
-        request_id = "req_openai_456"
-        timestamp = "2025-01-01T12:00:00Z"
-
-        records = [
-            # Request
-            {
-                "type": "request",
-                "id": request_id,
-                "timestamp": timestamp,
-                "method": "POST",
-                "url": "https://api.openai.com/v1/chat/completions",
-                "body": {"model": "gpt-4", "messages": [], "stream": True},
-            },
-            # Streaming chunks
-            {
-                "type": "response_chunk",
-                "request_id": request_id,
-                "status_code": 200,
-                "chunk_index": 0,
-                "content": {"choices": [{"delta": {"content": "Hello "}}]},
-            },
-            {
-                "type": "response_chunk",
-                "request_id": request_id,
-                "status_code": 200,
-                "chunk_index": 1,
-                "content": {"choices": [{"delta": {"content": "from GPT!"}}]},
-            },
-            # Meta
-            {
-                "type": "response_meta",
-                "request_id": request_id,
-                "status_code": 200,
-                "total_latency_ms": 300,
-                "total_chunks": 2,
-            },
-        ]
-
-        # Write input file
-        with open(input_file, "w") as f:
-            for record in records:
-                f.write(json.dumps(record) + "\n")
-
-        # Merge
-        merger = StreamMerger(input_file, output_file)
-        stats = merger.merge()
-
-        assert stats["streaming_requests"] == 1
-
-        # Verify output
-        with open(output_file) as f:
-            merged = json.loads(f.readline())
-
-        assert merged["response_text"] == "Hello from GPT!"
-
-    def test_merge_anthropic_non_streaming_with_tool_calls(self, tmp_path: Path) -> None:
-        """Test merging non-streaming Anthropic response with tool calls."""
-        input_file = tmp_path / "input.jsonl"
-        output_file = tmp_path / "output.jsonl"
-
-        request_id = "req_non_stream_789"
-        timestamp = "2025-01-01T12:00:00Z"
-
-        records = [
-            # Request
-            {
-                "type": "request",
-                "id": request_id,
-                "timestamp": timestamp,
-                "method": "POST",
-                "url": "https://api.anthropic.com/v1/messages",
-                "body": {"model": "claude-3-sonnet", "messages": []},
-            },
-            # Non-streaming response
-            {
-                "type": "response",
-                "request_id": request_id,
-                "status_code": 200,
-                "latency_ms": 250,
-                "body": {
-                    "content": [
-                        {"type": "text", "text": "I'll help you."},
-                        {
-                            "type": "tool_use",
-                            "id": "tool_999",
-                            "name": "search",
-                            "input": {"query": "test"},
-                        },
-                    ]
+                "content": {
+                    "type": "message_start",
+                    "message": {
+                        "id": "msg_test",
+                        "model": "claude-3-sonnet",
+                        "role": "assistant",
+                        "usage": {"input_tokens": 10},
+                    },
                 },
             },
-        ]
-
-        # Write input file
-        with open(input_file, "w") as f:
-            for record in records:
-                f.write(json.dumps(record) + "\n")
-
-        # Merge
-        merger = StreamMerger(input_file, output_file)
-        stats = merger.merge()
-
-        assert stats["non_streaming_requests"] == 1
-
-        # Verify output
-        with open(output_file) as f:
-            merged = json.loads(f.readline())
-
-        assert merged["response_text"] == "I'll help you."
-        assert len(merged["tool_calls"]) == 1
-        assert merged["tool_calls"][0]["name"] == "search"
-        assert merged["chunk_count"] == 0
-
-    def test_merge_openai_non_streaming_with_tool_calls(self, tmp_path: Path) -> None:
-        """Test merging non-streaming OpenAI response with tool calls."""
-        input_file = tmp_path / "input.jsonl"
-        output_file = tmp_path / "output.jsonl"
-
-        request_id = "req_openai_non_stream"
-        timestamp = "2025-01-01T12:00:00Z"
-
-        records = [
-            # Request
-            {
-                "type": "request",
-                "id": request_id,
-                "timestamp": timestamp,
-                "method": "POST",
-                "url": "https://api.openai.com/v1/chat/completions",
-                "body": {"model": "gpt-4", "messages": []},
-            },
-            # Non-streaming response
-            {
-                "type": "response",
-                "request_id": request_id,
-                "status_code": 200,
-                "latency_ms": 200,
-                "body": {
-                    "choices": [
-                        {
-                            "message": {
-                                "content": "Let me check.",
-                                "tool_calls": [
-                                    {
-                                        "id": "call_abc",
-                                        "function": {
-                                            "name": "get_data",
-                                            "arguments": '{"id": 123}',
-                                        },
-                                    }
-                                ],
-                            }
-                        }
-                    ]
-                },
-            },
-        ]
-
-        # Write input file
-        with open(input_file, "w") as f:
-            for record in records:
-                f.write(json.dumps(record) + "\n")
-
-        # Merge
-        merger = StreamMerger(input_file, output_file)
-        stats = merger.merge()
-
-        assert stats["non_streaming_requests"] == 1
-
-        # Verify output
-        with open(output_file) as f:
-            merged = json.loads(f.readline())
-
-        assert merged["response_text"] == "Let me check."
-        assert len(merged["tool_calls"]) == 1
-        assert merged["tool_calls"][0]["name"] == "get_data"
-
-    def test_merge_anthropic_streaming_with_tool_calls(self, tmp_path: Path) -> None:
-        """Test merging Anthropic streaming response with tool calls."""
-        input_file = tmp_path / "input.jsonl"
-        output_file = tmp_path / "output.jsonl"
-
-        request_id = "req_stream_tools"
-        timestamp = "2025-01-01T12:00:00Z"
-
-        records = [
-            # Request
-            {
-                "type": "request",
-                "id": request_id,
-                "timestamp": timestamp,
-                "method": "POST",
-                "url": "https://api.anthropic.com/v1/messages",
-                "body": {"model": "claude-3-sonnet", "messages": [], "stream": True},
-            },
-            # Text content block
-            {
-                "type": "response_chunk",
-                "request_id": request_id,
-                "status_code": 200,
-                "chunk_index": 0,
-                "content": {"delta": {"text": "Reading file..."}},
-            },
-            # Tool use content block start
             {
                 "type": "response_chunk",
                 "request_id": request_id,
@@ -756,15 +939,10 @@ class TestStreamMergerIntegration:
                 "chunk_index": 1,
                 "content": {
                     "type": "content_block_start",
-                    "index": 1,
-                    "content_block": {
-                        "type": "tool_use",
-                        "id": "tool_stream_123",
-                        "name": "read_file",
-                    },
+                    "index": 0,
+                    "content_block": {"type": "text", "text": ""},
                 },
             },
-            # Tool input delta
             {
                 "type": "response_chunk",
                 "request_id": request_id,
@@ -772,80 +950,197 @@ class TestStreamMergerIntegration:
                 "chunk_index": 2,
                 "content": {
                     "type": "content_block_delta",
-                    "index": 1,
-                    "delta": {
-                        "type": "input_json_delta",
-                        "partial_json": '{"path": "/etc/hosts"}',
-                    },
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "Hello World!"},
                 },
             },
-            # Meta
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 3,
+                "content": {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn"},
+                    "usage": {"output_tokens": 5},
+                },
+            },
             {
                 "type": "response_meta",
                 "request_id": request_id,
                 "status_code": 200,
-                "total_latency_ms": 400,
-                "total_chunks": 3,
+                "total_latency_ms": 500,
             },
         ]
 
-        # Write input file
-        with open(input_file, "w") as f:
+        with open(input_file, "w", encoding="utf-8") as f:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        # Merge
         merger = StreamMerger(input_file, output_file)
         stats = merger.merge()
 
         assert stats["streaming_requests"] == 1
-        assert stats["total_chunks_processed"] == 3
+        assert stats["total_chunks_processed"] == 4
 
-        # Verify output
-        with open(output_file) as f:
-            merged = json.loads(f.readline())
+        # Verify output has 2 lines: request and response
+        with open(output_file, encoding="utf-8") as f:
+            lines = f.readlines()
 
-        assert merged["response_text"] == "Reading file..."
-        assert len(merged["tool_calls"]) == 1
-        assert merged["tool_calls"][0]["id"] == "tool_stream_123"
-        assert merged["tool_calls"][0]["name"] == "read_file"
-        assert merged["tool_calls"][0]["input"] == {"path": "/etc/hosts"}
+        assert len(lines) == 2
 
-    def test_merge_incomplete_request(self, tmp_path: Path) -> None:
-        """Test handling request without response."""
+        # First line should be the original request
+        request_line = json.loads(lines[0])
+        assert request_line["type"] == "request"
+        assert request_line["id"] == request_id
+
+        # Second line should be the rebuilt response
+        response_line = json.loads(lines[1])
+        assert response_line["type"] == "response"
+        assert response_line["request_id"] == request_id
+        assert response_line["status_code"] == 200
+        assert response_line["body"]["id"] == "msg_test"
+        assert response_line["body"]["model"] == "claude-3-sonnet"
+        assert response_line["body"]["content"][0]["text"] == "Hello World!"
+        assert response_line["body"]["stop_reason"] == "end_turn"
+
+    def test_merge_openai_streaming_outputs_request_response_lines(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that merge outputs separate request and response lines for OpenAI."""
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"
+
+        request_id = "req_openai_456"
 
         records = [
             {
                 "type": "request",
-                "id": "orphan_request",
+                "id": request_id,
                 "timestamp": "2025-01-01T12:00:00Z",
                 "method": "POST",
-                "url": "https://api.anthropic.com/v1/messages",
+                "url": "https://api.openai.com/v1/chat/completions",
+                "body": {"model": "gpt-4", "messages": [], "stream": True},
+            },
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 0,
+                "content": {
+                    "id": "chatcmpl-test",
+                    "model": "gpt-4",
+                    "choices": [{"index": 0, "delta": {"role": "assistant"}}],
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 1,
+                "content": {
+                    "choices": [{"index": 0, "delta": {"content": "Hello from GPT!"}}],
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 2,
+                "content": {
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                },
+            },
+            {
+                "type": "response_meta",
+                "request_id": request_id,
+                "status_code": 200,
+                "total_latency_ms": 300,
             },
         ]
 
-        # Write input file
-        with open(input_file, "w") as f:
+        with open(input_file, "w", encoding="utf-8") as f:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        # Merge
         merger = StreamMerger(input_file, output_file)
         stats = merger.merge()
 
-        assert stats["incomplete_requests"] == 1
-        assert stats["streaming_requests"] == 0
-        assert stats["non_streaming_requests"] == 0
+        assert stats["streaming_requests"] == 1
 
-    def test_merge_mixed_requests(self, tmp_path: Path) -> None:
-        """Test merging file with mixed streaming and non-streaming requests."""
+        with open(output_file, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        assert len(lines) == 2
+
+        request_line = json.loads(lines[0])
+        assert request_line["type"] == "request"
+        assert request_line["id"] == request_id
+
+        response_line = json.loads(lines[1])
+        assert response_line["type"] == "response"
+        assert response_line["body"]["id"] == "chatcmpl-test"
+        assert response_line["body"]["choices"][0]["message"]["content"] == "Hello from GPT!"
+        assert response_line["body"]["choices"][0]["finish_reason"] == "stop"
+
+    def test_merge_non_streaming_preserves_original_response(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that non-streaming responses are preserved as-is."""
+        input_file = tmp_path / "input.jsonl"
+        output_file = tmp_path / "output.jsonl"
+
+        request_id = "req_non_stream"
+        original_response = {
+            "type": "response",
+            "request_id": request_id,
+            "status_code": 200,
+            "latency_ms": 250,
+            "body": {
+                "id": "msg_original",
+                "content": [{"type": "text", "text": "Original response"}],
+            },
+        }
+
+        records = [
+            {
+                "type": "request",
+                "id": request_id,
+                "timestamp": "2025-01-01T12:00:00Z",
+                "method": "POST",
+                "url": "https://api.anthropic.com/v1/messages",
+                "body": {"model": "claude-3-sonnet", "messages": []},
+            },
+            original_response,
+        ]
+
+        with open(input_file, "w", encoding="utf-8") as f:
+            for record in records:
+                f.write(json.dumps(record) + "\n")
+
+        merger = StreamMerger(input_file, output_file)
+        stats = merger.merge()
+
+        assert stats["non_streaming_requests"] == 1
+
+        with open(output_file, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        assert len(lines) == 2
+
+        request_line = json.loads(lines[0])
+        assert request_line["type"] == "request"
+
+        response_line = json.loads(lines[1])
+        assert response_line == original_response
+
+    def test_merge_mixed_requests_maintains_order(self, tmp_path: Path) -> None:
+        """Test that mixed streaming/non-streaming requests maintain order."""
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"
 
         records = [
-            # Streaming request
+            # First: streaming request
             {
                 "type": "request",
                 "id": "stream_req",
@@ -858,7 +1153,32 @@ class TestStreamMergerIntegration:
                 "request_id": "stream_req",
                 "status_code": 200,
                 "chunk_index": 0,
-                "content": {"delta": {"text": "Streamed"}},
+                "content": {
+                    "type": "message_start",
+                    "message": {"id": "msg_1", "model": "claude", "role": "assistant"},
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": "stream_req",
+                "status_code": 200,
+                "chunk_index": 1,
+                "content": {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": "stream_req",
+                "status_code": 200,
+                "chunk_index": 2,
+                "content": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "Streamed"},
+                },
             },
             {
                 "type": "response_meta",
@@ -866,7 +1186,7 @@ class TestStreamMergerIntegration:
                 "status_code": 200,
                 "total_latency_ms": 100,
             },
-            # Non-streaming request
+            # Second: non-streaming request
             {
                 "type": "request",
                 "id": "non_stream_req",
@@ -883,12 +1203,10 @@ class TestStreamMergerIntegration:
             },
         ]
 
-        # Write input file
-        with open(input_file, "w") as f:
+        with open(input_file, "w", encoding="utf-8") as f:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        # Merge
         merger = StreamMerger(input_file, output_file)
         stats = merger.merge()
 
@@ -896,17 +1214,64 @@ class TestStreamMergerIntegration:
         assert stats["non_streaming_requests"] == 1
         assert stats["total_requests"] == 2
 
-        # Verify output
-        with open(output_file) as f:
+        with open(output_file, encoding="utf-8") as f:
             lines = f.readlines()
 
-        assert len(lines) == 2
-        merged1 = json.loads(lines[0])
-        merged2 = json.loads(lines[1])
+        # Should have 4 lines: req1, resp1, req2, resp2
+        assert len(lines) == 4
 
-        texts = {merged1["response_text"], merged2["response_text"]}
-        assert "Streamed" in texts
-        assert "Non-streamed" in texts
+        # Verify order
+        line0 = json.loads(lines[0])
+        assert line0["type"] == "request"
+        assert line0["id"] == "stream_req"
+
+        line1 = json.loads(lines[1])
+        assert line1["type"] == "response"
+        assert line1["request_id"] == "stream_req"
+        assert line1["body"]["content"][0]["text"] == "Streamed"
+
+        line2 = json.loads(lines[2])
+        assert line2["type"] == "request"
+        assert line2["id"] == "non_stream_req"
+
+        line3 = json.loads(lines[3])
+        assert line3["type"] == "response"
+        assert line3["request_id"] == "non_stream_req"
+
+    def test_merge_incomplete_request_outputs_only_request(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that incomplete requests only output the request line."""
+        input_file = tmp_path / "input.jsonl"
+        output_file = tmp_path / "output.jsonl"
+
+        records = [
+            {
+                "type": "request",
+                "id": "orphan_request",
+                "timestamp": "2025-01-01T12:00:00Z",
+                "method": "POST",
+                "url": "https://api.anthropic.com/v1/messages",
+            },
+        ]
+
+        with open(input_file, "w", encoding="utf-8") as f:
+            for record in records:
+                f.write(json.dumps(record) + "\n")
+
+        merger = StreamMerger(input_file, output_file)
+        stats = merger.merge()
+
+        assert stats["incomplete_requests"] == 1
+
+        with open(output_file, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        # Should only have the request line
+        assert len(lines) == 1
+        line = json.loads(lines[0])
+        assert line["type"] == "request"
+        assert line["id"] == "orphan_request"
 
 
 class TestParseTimestamp:
@@ -946,4 +1311,3 @@ class TestParseTimestamp:
         result = merger._parse_timestamp("invalid")
         # Should return current time (approximately)
         assert isinstance(result, datetime)
-

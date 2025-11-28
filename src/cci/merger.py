@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from cci.logger import get_logger
-from cci.models import MergedRecord, ToolCall
+from cci.models import ToolCall
 from cci.storage import JSONLWriter, read_jsonl
 
 
@@ -20,7 +20,7 @@ class StreamMerger:
     Merges streaming response chunks into complete records.
 
     Reads a JSONL file with interleaved request/response_chunk/response_meta
-    records and produces a new file with merged request-response pairs.
+    records and produces a new file with separate request and response lines.
     """
 
     def __init__(self, input_path: str | Path, output_path: str | Path):
@@ -39,6 +39,13 @@ class StreamMerger:
         """
         Perform the merge operation.
 
+        Output format is alternating request/response lines:
+        - Line 1: request JSON
+        - Line 2: response JSON (merged from chunks if streaming)
+        - Line 3: next request JSON
+        - Line 4: next response JSON
+        - etc.
+
         Returns:
             Statistics about the merge operation
         """
@@ -51,11 +58,16 @@ class StreamMerger:
         metas: dict[str, dict[str, Any]] = {}
         non_streaming: dict[str, dict[str, Any]] = {}
 
+        # Track order of requests
+        request_order: list[str] = []
+
         for record in records:
             record_type = record.get("type", "")
 
             if record_type == "request":
-                requests[record["id"]] = record
+                request_id = record["id"]
+                requests[request_id] = record
+                request_order.append(request_id)
             elif record_type == "response_chunk":
                 request_id = record.get("request_id")
                 if request_id:
@@ -77,8 +89,7 @@ class StreamMerger:
             len(non_streaming),
         )
 
-        # Merge records
-        merged_records: list[MergedRecord] = []
+        # Process and write records
         stats = {
             "total_requests": len(requests),
             "streaming_requests": 0,
@@ -87,80 +98,392 @@ class StreamMerger:
             "total_chunks_processed": 0,
         }
 
-        for request_id, request in requests.items():
-            # Check if this was a streaming or non-streaming request
-            if request_id in chunks:
-                # Streaming request
-                request_chunks = sorted(
-                    chunks[request_id], key=lambda x: x.get("chunk_index", 0)
-                )
-                meta = metas.get(request_id, {})
-
-                # Extract text and tool calls from chunks
-                response_text = self._extract_text_from_chunks(request_chunks)
-                tool_calls = self._extract_tool_calls_from_chunks(request_chunks)
-
-                merged = MergedRecord(
-                    request_id=request_id,
-                    timestamp=self._parse_timestamp(request.get("timestamp")),
-                    method=request.get("method", ""),
-                    url=request.get("url", ""),
-                    request_body=request.get("body"),
-                    response_status=meta.get("status_code", request_chunks[0].get("status_code", 0))
-                    if request_chunks
-                    else 0,
-                    response_text=response_text,
-                    tool_calls=tool_calls,
-                    total_latency_ms=meta.get("total_latency_ms", 0),
-                    chunk_count=len(request_chunks),
-                )
-                merged_records.append(merged)
-                stats["streaming_requests"] += 1
-                stats["total_chunks_processed"] += len(request_chunks)
-
-            elif request_id in non_streaming:
-                # Non-streaming request
-                response = non_streaming[request_id]
-
-                # Extract text and tool calls from body
-                body = response.get("body")
-                tool_calls: list[ToolCall] = []
-                if isinstance(body, dict):
-                    response_text = self._extract_text_from_body(body)
-                    tool_calls = self._extract_tool_calls_from_body(body)
-                elif isinstance(body, str):
-                    response_text = body
-                else:
-                    response_text = json.dumps(body) if body else ""
-
-                merged = MergedRecord(
-                    request_id=request_id,
-                    timestamp=self._parse_timestamp(request.get("timestamp")),
-                    method=request.get("method", ""),
-                    url=request.get("url", ""),
-                    request_body=request.get("body"),
-                    response_status=response.get("status_code", 0),
-                    response_text=response_text,
-                    tool_calls=tool_calls,
-                    total_latency_ms=response.get("latency_ms", 0),
-                    chunk_count=0,
-                )
-                merged_records.append(merged)
-                stats["non_streaming_requests"] += 1
-
-            else:
-                # Request without response
-                self._logger.warning("Request %s... has no response", request_id[:8])
-                stats["incomplete_requests"] += 1
-
-        # Write merged records
-        self._logger.info("Writing %d merged records to %s", len(merged_records), self.output_path)
-
         with JSONLWriter(self.output_path, append=False) as writer:
-            for record in merged_records:
-                writer.write_record(record)
+            for request_id in request_order:
+                if request_id not in requests:
+                    continue
+
+                request = requests[request_id]
+
+                # Check if this was a streaming or non-streaming request
+                if request_id in chunks:
+                    # Streaming request - write request then merged response
+                    writer.write_record(request)
+
+                    request_chunks = sorted(
+                        chunks[request_id], key=lambda x: x.get("chunk_index", 0)
+                    )
+                    meta = metas.get(request_id, {})
+
+                    # Detect API format and rebuild response
+                    api_format = self._detect_api_format(request_chunks)
+                    if api_format == "anthropic":
+                        response = self._rebuild_anthropic_response(
+                            request_id, request_chunks, meta
+                        )
+                    else:
+                        response = self._rebuild_openai_response(
+                            request_id, request_chunks, meta
+                        )
+
+                    writer.write_record(response)
+                    stats["streaming_requests"] += 1
+                    stats["total_chunks_processed"] += len(request_chunks)
+
+                elif request_id in non_streaming:
+                    # Non-streaming request - write request then response as-is
+                    writer.write_record(request)
+                    writer.write_record(non_streaming[request_id])
+                    stats["non_streaming_requests"] += 1
+
+                else:
+                    # Request without response - only write request
+                    writer.write_record(request)
+                    self._logger.warning("Request %s... has no response", request_id[:8])
+                    stats["incomplete_requests"] += 1
+
+        self._logger.info(
+            "Wrote %d request-response pairs to %s",
+            stats["streaming_requests"] + stats["non_streaming_requests"],
+            self.output_path,
+        )
 
         return stats
+
+    def _detect_api_format(self, chunks: list[dict[str, Any]]) -> str:
+        """
+        Detect whether chunks are from Anthropic or OpenAI API.
+
+        Args:
+            chunks: List of response chunk records
+
+        Returns:
+            "anthropic" or "openai"
+        """
+        for chunk in chunks:
+            content = chunk.get("content", {})
+            if not isinstance(content, dict):
+                continue
+
+            # Anthropic format indicators
+            content_type = content.get("type", "")
+            if content_type in (
+                "message_start",
+                "content_block_start",
+                "content_block_delta",
+                "content_block_stop",
+                "message_delta",
+                "message_stop",
+                "ping",
+            ):
+                return "anthropic"
+
+            # OpenAI format indicators
+            if "choices" in content:
+                return "openai"
+
+        # Default to anthropic
+        return "anthropic"
+
+    def _rebuild_anthropic_response(
+        self,
+        request_id: str,
+        chunks: list[dict[str, Any]],
+        meta: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Rebuild a complete Anthropic API response from streaming chunks.
+
+        Args:
+            request_id: The request ID
+            chunks: List of response chunk records (sorted by chunk_index)
+            meta: Response meta record
+
+        Returns:
+            Complete response record with rebuilt Anthropic response body
+        """
+        # Initialize response body structure
+        body: dict[str, Any] = {
+            "type": "message",
+            "role": "assistant",
+            "content": [],
+            "stop_reason": None,
+            "stop_sequence": None,
+            "usage": {},
+        }
+
+        # Track content blocks by index
+        content_blocks: dict[int, dict[str, Any]] = {}
+        content_block_deltas: dict[int, list[str]] = defaultdict(list)
+
+        # Track status code and timestamp from first chunk
+        status_code = meta.get("status_code", 200)
+        timestamp = None
+        headers: dict[str, str] = {}
+
+        for chunk in chunks:
+            content = chunk.get("content", {})
+            if not isinstance(content, dict):
+                continue
+
+            # Get timestamp from first chunk
+            if timestamp is None:
+                timestamp = chunk.get("timestamp")
+                status_code = chunk.get("status_code", status_code)
+                headers = chunk.get("headers", {})
+
+            content_type = content.get("type", "")
+
+            if content_type == "message_start":
+                # Extract message metadata
+                message = content.get("message", {})
+                body["id"] = message.get("id", "")
+                body["model"] = message.get("model", "")
+                body["role"] = message.get("role", "assistant")
+                body["usage"] = message.get("usage", {})
+
+            elif content_type == "content_block_start":
+                # Start a new content block
+                index = content.get("index", 0)
+                block = content.get("content_block", {})
+                block_type = block.get("type", "text")
+
+                if block_type == "text":
+                    content_blocks[index] = {
+                        "type": "text",
+                        "text": block.get("text", ""),
+                    }
+                elif block_type == "tool_use":
+                    content_blocks[index] = {
+                        "type": "tool_use",
+                        "id": block.get("id", ""),
+                        "name": block.get("name", ""),
+                        "input": {},
+                    }
+                elif block_type == "thinking":
+                    content_blocks[index] = {
+                        "type": "thinking",
+                        "thinking": block.get("thinking", ""),
+                    }
+                else:
+                    # Generic block
+                    content_blocks[index] = dict(block)
+
+            elif content_type == "content_block_delta":
+                # Accumulate delta content
+                index = content.get("index", 0)
+                delta = content.get("delta", {})
+                delta_type = delta.get("type", "")
+
+                if delta_type == "text_delta":
+                    text = delta.get("text", "")
+                    if text:
+                        content_block_deltas[index].append(text)
+                elif delta_type == "input_json_delta":
+                    partial_json = delta.get("partial_json", "")
+                    if partial_json:
+                        content_block_deltas[index].append(partial_json)
+                elif delta_type == "thinking_delta":
+                    thinking = delta.get("thinking", "")
+                    if thinking:
+                        content_block_deltas[index].append(thinking)
+
+            elif content_type == "message_delta":
+                # Extract final message metadata
+                delta = content.get("delta", {})
+                if "stop_reason" in delta:
+                    body["stop_reason"] = delta["stop_reason"]
+                if "stop_sequence" in delta:
+                    body["stop_sequence"] = delta["stop_sequence"]
+                # Update usage with final values
+                if "usage" in content:
+                    body["usage"].update(content["usage"])
+
+        # Merge deltas into content blocks
+        for index, block in sorted(content_blocks.items()):
+            delta_parts = content_block_deltas.get(index, [])
+            merged_delta = "".join(delta_parts)
+
+            if block.get("type") == "text":
+                block["text"] = block.get("text", "") + merged_delta
+            elif block.get("type") == "tool_use":
+                # Parse accumulated JSON for tool input
+                if merged_delta:
+                    try:
+                        block["input"] = json.loads(merged_delta)
+                    except json.JSONDecodeError:
+                        block["input"] = merged_delta
+            elif block.get("type") == "thinking":
+                block["thinking"] = block.get("thinking", "") + merged_delta
+
+        # Build content array in order
+        body["content"] = [block for _, block in sorted(content_blocks.items())]
+
+        # Build response record
+        response: dict[str, Any] = {
+            "type": "response",
+            "request_id": request_id,
+            "status_code": status_code,
+            "body": body,
+            "latency_ms": meta.get("total_latency_ms", 0),
+        }
+
+        if timestamp:
+            response["timestamp"] = timestamp
+        if headers:
+            response["headers"] = headers
+
+        return response
+
+    def _rebuild_openai_response(
+        self,
+        request_id: str,
+        chunks: list[dict[str, Any]],
+        meta: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Rebuild a complete OpenAI API response from streaming chunks.
+
+        Args:
+            request_id: The request ID
+            chunks: List of response chunk records (sorted by chunk_index)
+            meta: Response meta record
+
+        Returns:
+            Complete response record with rebuilt OpenAI response body
+        """
+        # Initialize response body structure
+        body: dict[str, Any] = {
+            "object": "chat.completion",
+            "choices": [],
+            "usage": {},
+        }
+
+        # Track choices by index
+        choices_content: dict[int, list[str]] = defaultdict(list)
+        choices_tool_calls: dict[int, dict[int, dict[str, Any]]] = defaultdict(dict)
+        choices_tool_args: dict[int, dict[int, list[str]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        choices_finish_reason: dict[int, str | None] = {}
+        choices_role: dict[int, str] = {}
+
+        # Track status code and timestamp
+        status_code = meta.get("status_code", 200)
+        timestamp = None
+        headers: dict[str, str] = {}
+
+        for chunk in chunks:
+            content = chunk.get("content", {})
+            if not isinstance(content, dict):
+                continue
+
+            # Get metadata from first chunk
+            if timestamp is None:
+                timestamp = chunk.get("timestamp")
+                status_code = chunk.get("status_code", status_code)
+                headers = chunk.get("headers", {})
+
+            # Extract top-level metadata
+            if "id" not in body and "id" in content:
+                body["id"] = content["id"]
+            if "model" not in body and "model" in content:
+                body["model"] = content["model"]
+            if "created" not in body and "created" in content:
+                body["created"] = content["created"]
+            if "system_fingerprint" in content:
+                body["system_fingerprint"] = content["system_fingerprint"]
+
+            # Process choices
+            for choice in content.get("choices", []):
+                index = choice.get("index", 0)
+                delta = choice.get("delta", {})
+
+                # Accumulate role
+                if "role" in delta:
+                    choices_role[index] = delta["role"]
+
+                # Accumulate content
+                if "content" in delta and delta["content"]:
+                    choices_content[index].append(delta["content"])
+
+                # Accumulate tool calls
+                if "tool_calls" in delta:
+                    for tc in delta["tool_calls"]:
+                        tc_index = tc.get("index", 0)
+                        if "id" in tc:
+                            choices_tool_calls[index][tc_index] = {
+                                "id": tc["id"],
+                                "type": tc.get("type", "function"),
+                                "function": {
+                                    "name": tc.get("function", {}).get("name", ""),
+                                    "arguments": "",
+                                },
+                            }
+                        if "function" in tc and "arguments" in tc["function"]:
+                            choices_tool_args[index][tc_index].append(
+                                tc["function"]["arguments"]
+                            )
+
+                # Track finish reason
+                if "finish_reason" in choice and choice["finish_reason"]:
+                    choices_finish_reason[index] = choice["finish_reason"]
+
+            # Extract usage from final chunk
+            if "usage" in content and content["usage"]:
+                body["usage"] = content["usage"]
+
+        # Build choices array
+        all_indices = set(choices_content.keys()) | set(choices_tool_calls.keys())
+        if not all_indices:
+            all_indices = {0}
+
+        for index in sorted(all_indices):
+            message: dict[str, Any] = {
+                "role": choices_role.get(index, "assistant"),
+            }
+
+            # Merge content
+            content_parts = choices_content.get(index, [])
+            if content_parts:
+                message["content"] = "".join(content_parts)
+            else:
+                message["content"] = None
+
+            # Merge tool calls
+            tool_calls_data = choices_tool_calls.get(index, {})
+            if tool_calls_data:
+                tool_calls_list = []
+                for tc_index, tc_data in sorted(tool_calls_data.items()):
+                    # Merge arguments
+                    args_parts = choices_tool_args.get(index, {}).get(tc_index, [])
+                    tc_data["function"]["arguments"] = "".join(args_parts)
+                    tool_calls_list.append(tc_data)
+                message["tool_calls"] = tool_calls_list
+
+            choice_record: dict[str, Any] = {
+                "index": index,
+                "message": message,
+                "finish_reason": choices_finish_reason.get(index),
+            }
+
+            body["choices"].append(choice_record)
+
+        # Build response record
+        response: dict[str, Any] = {
+            "type": "response",
+            "request_id": request_id,
+            "status_code": status_code,
+            "body": body,
+            "latency_ms": meta.get("total_latency_ms", 0),
+        }
+
+        if timestamp:
+            response["timestamp"] = timestamp
+        if headers:
+            response["headers"] = headers
+
+        return response
 
     def _extract_text_from_chunks(self, chunks: list[dict[str, Any]]) -> str:
         """Extract the complete response text from streaming chunks."""
@@ -354,4 +677,3 @@ def merge_streams(input_path: str | Path, output_path: str | Path) -> dict[str, 
     """
     merger = StreamMerger(input_path, output_path)
     return merger.merge()
-
