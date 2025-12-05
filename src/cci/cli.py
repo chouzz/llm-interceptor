@@ -14,16 +14,15 @@ from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
-from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from cci import __version__
 from cci.config import get_cert_info, load_config
 
 if TYPE_CHECKING:
     from cci.config import CCIConfig
+    from cci.watch import WatchManager
 from cci.logger import log_startup_banner, setup_logger
 from cci.merger import merge_streams
 from cci.splitter import split_records
@@ -552,7 +551,7 @@ def watch(
 
         export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem
     """
-    from cci.watch import WatchManager, WatchState
+    from cci.watch import WatchManager
 
     # Load configuration
     config = load_config(ctx.obj.get("config_path"))
@@ -589,7 +588,6 @@ def watch(
     watch_manager.initialize()
 
     # State for controlling the event loop
-    proxy_task = None
     stop_event = threading.Event()
 
     def run_proxy_in_thread() -> None:
@@ -632,7 +630,7 @@ def _display_watch_banner(
     port: int,
     output_dir: str,
     global_log_path: Path,
-    config: "CCIConfig",
+    config: CCIConfig,
 ) -> None:
     """Display the watch mode startup banner."""
     console.print()
@@ -657,7 +655,7 @@ def _display_watch_banner(
     console.print()
 
 
-def _display_filter_rules(config: "CCIConfig") -> None:
+def _display_filter_rules(config: CCIConfig) -> None:
     """Display the current URL filter rules."""
     console.print("[bold cyan]URL Filter Rules:[/]")
 
@@ -691,7 +689,7 @@ def _display_filter_rules(config: "CCIConfig") -> None:
     console.print()
 
 
-def _run_watch_loop(watch_manager: "WatchManager", stop_event: threading.Event) -> None:
+def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) -> None:
     """Run the main watch mode interaction loop."""
     from cci.watch import WatchState
 
@@ -719,8 +717,9 @@ def _run_watch_loop(watch_manager: "WatchManager", stop_event: threading.Event) 
             # Start recording
             try:
                 session = watch_manager.start_recording()
+                session_id = session.session_id
                 console.print(
-                    f"\n[bold red]◉[/] [red][REC][/] Session [bold]{session.session_id}[/] is recording..."
+                    f"\n[bold red]◉[/] [red][REC][/] Session [bold]{session_id}[/] is recording..."
                 )
                 console.print("  [dim]Press [Enter] to STOP & PROCESS[/]")
             except RuntimeError as e:
@@ -738,8 +737,10 @@ def _run_watch_loop(watch_manager: "WatchManager", stop_event: threading.Event) 
             # Stop recording and process
             try:
                 session = watch_manager.stop_recording()
+                session_id = session.session_id
                 console.print(
-                    f"\n[bold yellow]⏳[/] [yellow][BUSY][/] Processing Session [bold]{session.session_id}[/]..."
+                    f"\n[bold yellow]⏳[/] [yellow][BUSY][/] Processing "
+                    f"Session [bold]{session_id}[/]..."
                 )
 
                 # Process the session
