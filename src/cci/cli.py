@@ -1,7 +1,7 @@
 """
 Command-line interface for Claude-Code-Inspector.
 
-Provides the `cci` command with subcommands for capture, merge, watch, and config.
+Provides the `cci` command with subcommands for watch, merge, split, config, and stats.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from cci.config import get_cert_info, load_config
 if TYPE_CHECKING:
     from cci.config import CCIConfig
     from cci.watch import WatchManager
-from cci.logger import log_startup_banner, setup_logger
+from cci.logger import setup_logger
 from cci.merger import merge_streams
 from cci.splitter import split_records
 from cci.storage import count_records
@@ -50,130 +50,6 @@ def main(ctx: click.Context, config_path: str | None) -> None:
     """
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config_path
-
-
-@main.command()
-@click.option(
-    "--port",
-    "-p",
-    type=int,
-    default=8080,
-    help="Proxy server port (default: 8080)",
-)
-@click.option(
-    "--host",
-    "-h",
-    type=str,
-    default="127.0.0.1",
-    help="Proxy server host (default: 127.0.0.1)",
-)
-@click.option(
-    "--output",
-    "-o",
-    type=click.Path(),
-    default="cci_trace.jsonl",
-    help="Output file path (default: cci_trace.jsonl)",
-)
-@click.option(
-    "--debug",
-    is_flag=True,
-    help="Enable debug mode with verbose logging",
-)
-@click.option(
-    "--include",
-    "-i",
-    multiple=True,
-    help="Additional URL patterns to include (glob pattern, e.g. '*api.example.com*')",
-)
-@click.option(
-    "--exclude",
-    "-e",
-    multiple=True,
-    help="URL patterns to exclude (glob pattern, e.g. '*health*')",
-)
-@click.pass_context
-def capture(
-    ctx: click.Context,
-    port: int,
-    host: str,
-    output: str,
-    debug: bool,
-    include: tuple[str, ...],
-    exclude: tuple[str, ...],
-) -> None:
-    """
-    Start the proxy server and capture LLM API traffic.
-
-    The proxy will intercept HTTP/HTTPS traffic and log requests to
-    configured LLM APIs (Anthropic, OpenAI, Google, etc.).
-
-    Examples:
-
-        cci capture --port 8080 --output my_trace.jsonl
-
-        cci capture --debug --include "*my-custom-api.com*"
-
-    Configure your target application to use this proxy:
-
-        export HTTP_PROXY=http://127.0.0.1:8080
-
-        export HTTPS_PROXY=http://127.0.0.1:8080
-    """
-    # Load configuration
-    config = load_config(ctx.obj.get("config_path"))
-
-    # Apply CLI overrides
-    config.proxy.port = port
-    config.proxy.host = host
-    config.storage.output_file = output
-
-    if debug:
-        config.logging.level = "DEBUG"
-
-    # Add custom glob patterns (user-provided via CLI)
-    for pattern in include:
-        config.filter.include_globs.append(pattern)
-    for pattern in exclude:
-        config.filter.exclude_globs.append(pattern)
-
-    # Setup logging
-    setup_logger(config.logging.level, config.logging.log_file)
-
-    # Check certificate
-    cert_info = get_cert_info()
-    if not cert_info["exists"]:
-        console.print(
-            "[yellow]⚠ mitmproxy CA certificate not found.[/]\n"
-            "  Run 'cci config --cert-help' for installation instructions.\n"
-            "  The certificate will be generated on first run.\n"
-        )
-
-    # Display startup banner
-    log_startup_banner(host, port)
-
-    # Display filter rules
-    _display_filter_rules(config)
-
-    # Run the proxy
-    try:
-        from cci.proxy import run_proxy
-
-        asyncio.run(run_proxy(config, output))
-    except KeyboardInterrupt:
-        console.print("\n[cyan]Capture stopped.[/]")
-        # Show summary
-        output_path = Path(output)
-        if output_path.exists():
-            counts = count_records(output_path)
-            console.print(f"\n[green]Saved to:[/] {output}")
-            console.print(f"[dim]Records:[/] {sum(counts.values())} total")
-            for record_type, count in counts.items():
-                console.print(f"  - {record_type}: {count}")
-    except Exception as e:
-        console.print(f"[red]Error:[/] {e}")
-        if debug:
-            raise
-        sys.exit(1)
 
 
 @main.command()
