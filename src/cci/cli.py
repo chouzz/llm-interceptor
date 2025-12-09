@@ -391,6 +391,12 @@ def stats(file: str) -> None:
     is_flag=True,
     help="Enable debug mode with verbose logging",
 )
+@click.option(
+    "--ui",
+    is_flag=True,
+    default=True,
+    help="Launch the web UI (default: True)",
+)
 @click.pass_context
 def watch(
     ctx: click.Context,
@@ -398,6 +404,7 @@ def watch(
     output_dir: str,
     include: tuple[str, ...],
     debug: bool,
+    ui: bool,
 ) -> None:
     """
     Start watch mode for continuous session capture.
@@ -456,6 +463,26 @@ def watch(
 
     # Create watch manager
     watch_manager = WatchManager(output_dir=output_dir, port=port)
+
+    # Launch UI server if requested
+    if ui:
+        from cci.server import run_server
+        
+        ui_port = 8000  # TODO: Make configurable
+        server_thread = threading.Thread(
+            target=run_server,
+            args=(watch_manager,),
+            kwargs={"port": ui_port},
+            daemon=True
+        )
+        server_thread.start()
+        
+        ui_url = f"http://localhost:{ui_port}"
+        console.print(Panel(
+            f"Analyze sessions at: [bold link={ui_url}]{ui_url}[/]",
+            title="[bold green]Web UI Available[/]",
+            border_style="green"
+        ))
 
     # Display startup info
     _display_watch_banner(port, output_dir, watch_manager.global_log_path, config)
