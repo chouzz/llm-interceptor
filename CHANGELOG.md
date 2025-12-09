@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-09
+
+### Added
+
+- **New `watch` command** - Continuous session capture mode for real-time monitoring
+  - Automatic session management with timestamped directories
+  - Support for custom URL patterns via `--include` option
+- **Streamlit app for AI Traffic Inspector** - Web-based UI for traffic analysis
+- **Glob pattern support** - URL filtering now supports glob patterns for more flexible matching
+
+### Changed
+
+- **CLI refactoring** - Removed `capture` command and updated subcommands for cleaner interface
+
+---
+
 ## [1.1.0] - 2025-11-28
 
 ### Added

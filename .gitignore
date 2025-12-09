@@ -72,7 +72,7 @@ cci.toml
 cci.yaml
 cci.yml
 split_output/
-
+traces/
 # mitmproxy certificates (user should manage these separately)
 .mitmproxy/
 
