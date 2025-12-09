@@ -228,8 +228,7 @@ def _show_cert_help() -> None:
 
     console.print(f"[dim]Certificate path:[/] {cert_info['cert_path']}")
     exists_text = (
-        "[green]Yes[/]" if cert_info["exists"]
-        else "[yellow]No (will be generated on first run)[/]"
+        "[green]Yes[/]" if cert_info["exists"] else "[yellow]No (will be generated on first run)[/]"
     )
     console.print(f"[dim]Certificate exists:[/] {exists_text}")
     console.print()
@@ -245,8 +244,7 @@ def _show_cert_help() -> None:
     console.print("[bold]Linux:[/]")
     console.print("  # Ubuntu/Debian:")
     console.print(
-        f"  sudo cp {cert_info['cert_path']} "
-        "/usr/local/share/ca-certificates/mitmproxy.crt"
+        f"  sudo cp {cert_info['cert_path']} " "/usr/local/share/ca-certificates/mitmproxy.crt"
     )
     console.print("  sudo update-ca-certificates")
     console.print()
@@ -294,9 +292,9 @@ def _show_proxy_help() -> None:
     console.print()
 
     console.print("[bold]Python requests:[/]")
-    console.print('  import requests')
+    console.print("  import requests")
     console.print('  proxies = {"http": "http://127.0.0.1:8080", "https": "http://127.0.0.1:8080"}')
-    console.print('  requests.post(url, proxies=proxies, verify=False)')
+    console.print("  requests.post(url, proxies=proxies, verify=False)")
 
 
 def _show_config(config_path: str | None) -> None:
@@ -467,22 +465,21 @@ def watch(
     # Launch UI server if requested
     if ui:
         from cci.server import run_server
-        
+
         ui_port = 8000  # TODO: Make configurable
         server_thread = threading.Thread(
-            target=run_server,
-            args=(watch_manager,),
-            kwargs={"port": ui_port},
-            daemon=True
+            target=run_server, args=(watch_manager,), kwargs={"port": ui_port}, daemon=True
         )
         server_thread.start()
-        
+
         ui_url = f"http://localhost:{ui_port}"
-        console.print(Panel(
-            f"Analyze sessions at: [bold link={ui_url}]{ui_url}[/]",
-            title="[bold green]Web UI Available[/]",
-            border_style="green"
-        ))
+        console.print(
+            Panel(
+                f"Analyze sessions at: [bold link={ui_url}]{ui_url}[/]",
+                title="[bold green]Web UI Available[/]",
+                border_style="green",
+            )
+        )
 
     # Display startup info
     _display_watch_banner(port, output_dir, watch_manager.global_log_path, config)
@@ -537,11 +534,12 @@ def _display_watch_banner(
 ) -> None:
     """Display the watch mode startup banner."""
     console.print()
-    console.print(Panel.fit(
-        "[bold cyan]CCI Watch Mode[/]\n"
-        "[dim]Continuous Capture Interface[/]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]CCI Watch Mode[/]\n" "[dim]Continuous Capture Interface[/]",
+            border_style="cyan",
+        )
+    )
     console.print()
     console.print(f"  [cyan]Proxy Port:[/]    {port}")
     console.print(f"  [cyan]Output Dir:[/]    {output_dir}")
@@ -648,9 +646,7 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
 
                 # Process the session
                 session_dir = watch_manager.process_session(session)
-                console.print(
-                    f"  [green]✔[/] Saved to [cyan]{session_dir}/[/]"
-                )
+                console.print(f"  [green]✔[/] Saved to [cyan]{session_dir}/[/]")
                 console.print()
             except RuntimeError as e:
                 console.print(f"[red]Error processing session:[/] {e}")
@@ -658,9 +654,9 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
         elif state == WatchState.PROCESSING:
             # Wait for processing to complete (should not normally reach here)
             import time
+
             time.sleep(0.1)
 
 
 if __name__ == "__main__":
     main(obj={})
-
