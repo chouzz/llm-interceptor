@@ -22,7 +22,9 @@ import {
   Pencil,
   MessageCircle,
   Check,
-  Copy
+  Copy,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import type { Session, NormalizedMessage, NormalizedTool, SessionSummary, AnnotationData } from './types';
 import { normalizeSession, formatTimestamp } from './utils';
@@ -384,6 +386,7 @@ const App: React.FC = () => {
   const [annotations, setAnnotations] = useState<Record<string, AnnotationData>>({});
   const [editingSessionNote, setEditingSessionNote] = useState<string | null>(null);
   const [editingRequestNote, setEditingRequestNote] = useState<string | null>(null);
+  const [chatScrollEdges, setChatScrollEdges] = useState({ atTop: true, atBottom: true });
 
   // --- Annotation API ---
 
@@ -567,6 +570,8 @@ const App: React.FC = () => {
     return currentSession.exchanges.filter(ex => stringToColor(ex.systemPrompt) === systemPromptFilter);
   }, [currentSession, systemPromptFilter]);
 
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
   const currentExchange = useMemo(() =>
     currentSession?.exchanges.find(e => e.id === selectedExchangeId),
   [currentSession, selectedExchangeId]);
@@ -583,6 +588,33 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [isDarkMode]);
+
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el || activeTab !== 'chat') {
+      setChatScrollEdges({ atTop: true, atBottom: true });
+      return;
+    }
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      setChatScrollEdges({
+        atTop: scrollTop <= 8,
+        atBottom: scrollTop + clientHeight >= scrollHeight - 8
+      });
+    };
+
+    handleScroll();
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [activeTab, currentExchange]);
+
+  const scrollChatTo = (position: 'top' | 'bottom') => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const top = position === 'top' ? 0 : el.scrollHeight;
+    el.scrollTo({ top, behavior: 'smooth' });
+  };
 
   // Wrapper for app content
   return (
@@ -1022,7 +1054,7 @@ const App: React.FC = () => {
                 </header>
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar bg-white dark:bg-[#0f172a]">
+                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar bg-white dark:bg-[#0f172a]">
 
                   {/* Chat View */}
                   {activeTab === 'chat' && (
@@ -1152,6 +1184,30 @@ const App: React.FC = () => {
                   )}
 
                 </div>
+                {activeTab === 'chat' && (
+                  <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-30">
+                    <button
+                      onClick={() => scrollChatTo('top')}
+                      className={`p-3 rounded-full border border-gray-200 dark:border-slate-700 shadow-lg bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-200 transition hover:-translate-y-0.5 hover:bg-blue-50 dark:hover:bg-slate-800/80 ${
+                        chatScrollEdges.atTop ? 'opacity-40 cursor-not-allowed hover:translate-y-0 hover:bg-white dark:hover:bg-slate-900' : ''
+                      }`}
+                      aria-label="Scroll to top"
+                      disabled={chatScrollEdges.atTop}
+                    >
+                      <ArrowUp size={16} />
+                    </button>
+                    <button
+                      onClick={() => scrollChatTo('bottom')}
+                      className={`p-3 rounded-full border border-gray-200 dark:border-slate-700 shadow-lg bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-200 transition hover:translate-y-0.5 hover:bg-blue-50 dark:hover:bg-slate-800/80 ${
+                        chatScrollEdges.atBottom ? 'opacity-40 cursor-not-allowed hover:translate-y-0 hover:bg-white dark:hover:bg-slate-900' : ''
+                      }`}
+                      aria-label="Scroll to bottom"
+                      disabled={chatScrollEdges.atBottom}
+                    >
+                      <ArrowDown size={16} />
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-600 flex-col gap-6 bg-white dark:bg-[#0f172a]">
