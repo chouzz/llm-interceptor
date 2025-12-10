@@ -503,6 +503,22 @@ const App: React.FC = () => {
     }
   }, [selectedSessionId]);
 
+  // Auto-select the newest session once the list loads, and handle removed sessions
+  useEffect(() => {
+    if (sessionList.length === 0) {
+      if (selectedSessionId !== null) {
+        setSelectedSessionId(null);
+      }
+      setSelectedExchangeId(null);
+      return;
+    }
+
+    const hasSelection = selectedSessionId && sessionList.some(session => session.id === selectedSessionId);
+    if (!hasSelection) {
+      setSelectedSessionId(sessionList[0].id);
+    }
+  }, [sessionList, selectedSessionId]);
+
   // --- Resizing Logic ---
 
   const startResizingSessions = (e: React.MouseEvent) => {
