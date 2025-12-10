@@ -9,6 +9,11 @@ export interface SessionSummary {
   total_tokens: number;
 }
 
+export interface AnnotationData {
+  session_note: string;
+  requests: Record<string, string>; // key: sequenceId (e.g., "001"), value: note
+}
+
 export interface LogRecord {
   type: "request" | "response";
   request_id: string;
@@ -42,7 +47,7 @@ export interface RawRequest {
   method: string;
   url: string;
   headers: Record<string, string>;
-  body: any; 
+  body: any;
 }
 
 export interface RawResponse {
@@ -72,12 +77,12 @@ export interface NormalizedExchange {
   latencyMs: number;
   statusCode: number;
   model: string;
-  
+
   // Grouped Data
   systemPrompt?: string; // Extracted system prompt
   messages: NormalizedMessage[]; // The conversation context sent TO the model
   tools?: NormalizedTool[]; // Tools defined in the request
-  
+
   responseContent: any; // The answer FROM the model
   usage?: {
     input_tokens: number;

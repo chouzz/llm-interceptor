@@ -30,6 +30,13 @@ class SessionSummary(BaseModel):
     total_tokens: int
 
 
+class AnnotationData(BaseModel):
+    """Annotation data for a session."""
+
+    session_note: str = ""
+    requests: dict[str, str] = {}  # key: sequenceId (e.g., "001"), value: note
+
+
 class ServerState:
     """Shared state for the API server."""
 
@@ -149,6 +156,45 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
             "session_id": current_session.session_id,
             "pairs": [],  # TODO: Implement real-time merging
         }
+
+    @app.get("/api/sessions/{session_id}/annotations", response_model=AnnotationData)
+    async def get_annotations(session_id: str):
+        """Get annotations for a specific session."""
+        session_dir = state.watch_manager.output_dir / session_id
+
+        if not session_dir.exists():
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        annotations_file = session_dir / "annotations.json"
+
+        if not annotations_file.exists():
+            return AnnotationData()
+
+        try:
+            with open(annotations_file, encoding="utf-8") as f:
+                data = json.load(f)
+                return AnnotationData(**data)
+        except Exception as e:
+            logger.error(f"Error reading annotations for {session_id}: {e}")
+            return AnnotationData()
+
+    @app.put("/api/sessions/{session_id}/annotations", response_model=AnnotationData)
+    async def update_annotations(session_id: str, annotations: AnnotationData):
+        """Update annotations for a specific session."""
+        session_dir = state.watch_manager.output_dir / session_id
+
+        if not session_dir.exists():
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        annotations_file = session_dir / "annotations.json"
+
+        try:
+            with open(annotations_file, "w", encoding="utf-8") as f:
+                json.dump(annotations.model_dump(), f, ensure_ascii=False, indent=2)
+            return annotations
+        except Exception as e:
+            logger.error(f"Error saving annotations for {session_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to save annotations") from e
 
     # Serve static files (React UI)
     # The static directory should be adjacent to this file in the package

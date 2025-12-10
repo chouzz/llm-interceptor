@@ -2,11 +2,15 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.4
     hooks:
-      # Run the linter
+      # Run the linter (Python only, exclude frontend)
       - id: ruff
         args: [--fix]
-      # Run the formatter
+        types: [python]
+        exclude: ^ui/
+      # Run the formatter (Python only, exclude frontend)
       - id: ruff-format
+        types: [python]
+        exclude: ^ui/
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
