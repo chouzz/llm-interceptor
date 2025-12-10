@@ -48,6 +48,36 @@ const normalizeUsageMetrics = (rawUsage: any) => {
 };
 
 /**
+ * Convert OpenAI system content (string/array/object) to readable string.
+ */
+const normalizeOpenAISystemContent = (content: any): string => {
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        if (typeof block === 'string') return block;
+        if (block && typeof block === 'object') {
+          if ('text' in block && typeof block.text === 'string') {
+            return block.text;
+          }
+          return JSON.stringify(block, null, 2);
+        }
+        return String(block);
+      })
+      .join('\n');
+  }
+  if (content && typeof content === 'object') {
+    return JSON.stringify(content, null, 2);
+  }
+  if (content === undefined || content === null) {
+    return '';
+  }
+  return String(content);
+};
+
+/**
  * Normalizes an OpenAI-style request body into our standard format.
  */
 const normalizeOpenAIRequest = (body: any): { system: string | undefined, messages: NormalizedMessage[], tools: NormalizedTool[], model: string } => {
@@ -57,7 +87,9 @@ const normalizeOpenAIRequest = (body: any): { system: string | undefined, messag
   
   // 1. Extract System Prompt (OpenAI puts it in messages)
   const systemMessages = rawMessages.filter((m: any) => m.role === 'system' || m.role === 'developer');
-  const system = systemMessages.length > 0 ? systemMessages.map((m: any) => m.content).join('\n') : undefined;
+  const system = systemMessages.length > 0
+    ? systemMessages.map((m: any) => normalizeOpenAISystemContent(m.content)).filter(Boolean).join('\n')
+    : undefined;
 
   // 2. Normalize Tools
   const tools: NormalizedTool[] = Array.isArray(body.tools) ? body.tools.map((t: any) => {
