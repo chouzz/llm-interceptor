@@ -7,6 +7,7 @@ Provides the `cci` command with subcommands for watch, merge, split, config, and
 from __future__ import annotations
 
 import asyncio
+import socket
 import sys
 import threading
 from pathlib import Path
@@ -466,20 +467,37 @@ def watch(
     if ui:
         from cci.server import run_server
 
+        ui_host = "127.0.0.1"
         ui_port = 8000  # TODO: Make configurable
-        server_thread = threading.Thread(
-            target=run_server, args=(watch_manager,), kwargs={"port": ui_port}, daemon=True
-        )
-        server_thread.start()
 
-        ui_url = f"http://localhost:{ui_port}"
-        console.print(
-            Panel(
-                f"Analyze sessions at: [bold link={ui_url}]{ui_url}[/]",
-                title="[bold green]Web UI Available[/]",
-                border_style="green",
+        if _is_port_in_use(ui_host, ui_port):
+            ui_url = f"http://{ui_host}:{ui_port}"
+            console.print(
+                Panel(
+                    f"Port {ui_port} is already in use.\n"
+                    f"Assuming the UI is running at [bold link={ui_url}]{ui_url}[/].\n"
+                    "Use '--no-ui' to silence this message.",
+                    title="[bold yellow]Web UI Already Running[/]",
+                    border_style="yellow",
+                )
             )
-        )
+        else:
+            server_thread = threading.Thread(
+                target=run_server,
+                args=(watch_manager,),
+                kwargs={"port": ui_port},
+                daemon=True,
+            )
+            server_thread.start()
+
+            ui_url = f"http://{ui_host}:{ui_port}"
+            console.print(
+                Panel(
+                    f"Analyze sessions at: [bold link={ui_url}]{ui_url}[/]",
+                    title="[bold green]Web UI Available[/]",
+                    border_style="green",
+                )
+            )
 
     # Display startup info
     _display_watch_banner(port, output_dir, watch_manager.global_log_path, config)
@@ -656,6 +674,17 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
             import time
 
             time.sleep(0.1)
+
+
+def _is_port_in_use(host: str, port: int) -> bool:
+    """Return True if the given host:port combination is already bound."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return True
+    return False
 
 
 if __name__ == "__main__":
