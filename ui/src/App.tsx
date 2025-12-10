@@ -145,11 +145,20 @@ const stringToColor = (str: string | undefined) => {
   return '#' + '00000'.substring(0, 6 - c.length) + c;
 };
 
+const safeJSONStringify = (value: any, space = 2) => {
+  try {
+    return JSON.stringify(value, null, space);
+  } catch (error) {
+    console.error('Failed to stringify JSON data', error);
+    return '';
+  }
+};
+
 // --- Sub-components ---
 
 const JSONViewer: React.FC<{ data: any }> = ({ data }) => (
   <pre className="text-xs font-mono bg-gray-50 dark:bg-black/40 p-4 rounded overflow-auto max-h-[600px] text-green-700 dark:text-green-400 border border-gray-200 dark:border-gray-800 custom-scrollbar">
-    {JSON.stringify(data, null, 2)}
+    {safeJSONStringify(data)}
   </pre>
 );
 
@@ -575,6 +584,16 @@ const App: React.FC = () => {
   const currentExchange = useMemo(() =>
     currentSession?.exchanges.find(e => e.id === selectedExchangeId),
   [currentSession, selectedExchangeId]);
+
+  const requestBodyText = useMemo(
+    () => (currentExchange ? safeJSONStringify(currentExchange.rawRequest) : ''),
+    [currentExchange]
+  );
+
+  const responseBodyText = useMemo(
+    () => (currentExchange?.rawResponse ? safeJSONStringify(currentExchange.rawResponse) : ''),
+    [currentExchange]
+  );
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -1157,18 +1176,28 @@ const App: React.FC = () => {
                   {activeTab === 'raw' && (
                     <div className="grid grid-cols-2 gap-6 h-full">
                       <div className="flex flex-col h-full overflow-hidden">
-                        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                            Request Body
+                        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                              Request Body
+                            </div>
+                            {requestBodyText && (
+                              <CopyButton content={requestBodyText} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700" />
+                            )}
                         </div>
                         <div className="flex-1 overflow-hidden rounded-lg shadow-inner border border-gray-200 dark:border-transparent">
                             <JSONViewer data={currentExchange.rawRequest} />
                         </div>
                       </div>
                       <div className="flex flex-col h-full overflow-hidden">
-                        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                            Response Body
+                        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                              Response Body
+                            </div>
+                            {responseBodyText && (
+                              <CopyButton content={responseBodyText} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700" />
+                            )}
                         </div>
                         <div className="flex-1 overflow-hidden rounded-lg shadow-inner border border-gray-200 dark:border-transparent">
                             {currentExchange.rawResponse ? (
