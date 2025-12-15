@@ -210,49 +210,53 @@ export const ExchangeDetailsPane: React.FC<{
             {/* Tools View */}
             {activeTab === 'tools' && (
               <>
-                {/* Sticky Tool Header - rendered outside max-w-4xl for proper sticky behavior */}
-                {stickyToolInfo.name && (
-                  <div className="sticky top-0 z-10 -mx-6 bg-white dark:bg-[#0f172a] border-b border-orange-200 dark:border-orange-800/50 shadow-sm">
-                    <div className="px-6">
-                      <div className="max-w-4xl mx-auto">
-                        <div className="flex items-center justify-between py-2">
-                          {/* Clickable area to scroll to tool */}
-                          <div
-                            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1"
-                            onClick={() => stickyToolInfo.scrollFn?.()}
-                            title="Click to scroll to this tool"
-                          >
-                            <div className="p-1.5 bg-orange-100 dark:bg-orange-950/50 rounded text-orange-600 dark:text-orange-400">
-                              <Box size={14} />
+                {/* Sticky bar: always rendered to avoid layout thrash/flicker while scrolling */}
+                <div className="sticky top-0 z-10 -mx-6 bg-white dark:bg-[#0f172a] border-b border-gray-200 dark:border-slate-800 shadow-sm">
+                  <div className="px-6">
+                    <div className="max-w-4xl mx-auto">
+                      <div className="flex items-center justify-between h-12">
+                        {stickyToolInfo.name ? (
+                          <>
+                            {/* Clickable area to scroll to tool */}
+                            <div
+                              className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1"
+                              onClick={() => stickyToolInfo.scrollFn?.()}
+                              title="Click to scroll to this tool"
+                            >
+                              <div className="p-1.5 bg-orange-100 dark:bg-orange-950/50 rounded text-orange-600 dark:text-orange-400">
+                                <Box size={14} />
+                              </div>
+                              <span className="font-mono font-bold text-sm text-orange-700 dark:text-orange-300">
+                                {stickyToolInfo.name}
+                              </span>
                             </div>
-                            <span className="font-mono font-bold text-sm text-orange-700 dark:text-orange-300">
-                              {stickyToolInfo.name}
+                            {/* Collapse button */}
+                            <button
+                              className="p-1.5 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded transition-colors"
+                              onClick={() => stickyToolInfo.toggleFn?.()}
+                              title="Collapse this tool"
+                              type="button"
+                            >
+                              <ChevronDown size={16} className="text-orange-500 dark:text-orange-400" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <h3 className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                              <Box size={18} className="text-orange-500 dark:text-orange-400" />
+                              Available Tools
+                            </h3>
+                            <span className="text-xs bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full text-slate-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700">
+                              {currentExchange.tools?.length || 0} definitions
                             </span>
-                          </div>
-                          {/* Collapse button */}
-                          <button
-                            className="p-1.5 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded transition-colors"
-                            onClick={() => stickyToolInfo.toggleFn?.()}
-                            title="Collapse this tool"
-                            type="button"
-                          >
-                            <ChevronDown size={16} className="text-orange-500 dark:text-orange-400" />
-                          </button>
-                        </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
-                )}
-                <div className={`max-w-4xl mx-auto ${stickyToolInfo.name ? 'pt-4' : ''}`}>
-                  <div className="mb-6 flex items-center justify-between">
-                    <h3 className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                      <Box size={18} className="text-orange-500 dark:text-orange-400" />
-                      Available Tools
-                    </h3>
-                    <span className="text-xs bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full text-slate-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700">
-                      {currentExchange.tools?.length || 0} definitions
-                    </span>
-                  </div>
+                </div>
+
+                <div className="max-w-4xl mx-auto pt-4">
                   {currentExchange.tools && currentExchange.tools.length > 0 ? (
                     <ToolsList
                       tools={currentExchange.tools}

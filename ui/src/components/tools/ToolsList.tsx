@@ -51,19 +51,25 @@ export const ToolsList: React.FC<{
     const toolsContainer = toolsContainerRef.current;
     if (!scrollContainer || !toolsContainer) return;
 
-    const handleScroll = () => {
-      const toolElements = toolsContainer.querySelectorAll('[data-tool-name]');
-      // The sticky header should appear when tool header is above the content area top
-      // Content area starts at top of scrollContainer
+    let rafId: number | null = null;
+    const options: AddEventListenerOptions = { passive: true };
+
+    // Small buffer to avoid flicker around sub-pixel boundaries when the header crosses the top edge.
+    const EDGE_EPSILON_PX = 1;
+
+    const updateStickyTool = () => {
+      const toolElements = toolsContainer.querySelectorAll<HTMLElement>('[data-tool-name]');
+
+      // Sticky calculations must be done relative to the scroll container viewport, not the window.
       const containerRect = scrollContainer.getBoundingClientRect();
-      const viewportTop = containerRect.top;
+      const viewportTop = containerRect.top + EDGE_EPSILON_PX;
 
       let currentTool: string | null = null;
 
       toolElements.forEach((el) => {
         const toolName = el.getAttribute('data-tool-name');
-        const toolHeader = el.querySelector('.tool-header');
-        const toolContent = el.querySelector('.tool-content');
+        const toolHeader = el.querySelector<HTMLElement>('.tool-header');
+        const toolContent = el.querySelector<HTMLElement>('.tool-content');
 
         if (!toolName) return;
         // Only show sticky header for expanded tools
@@ -73,23 +79,38 @@ export const ToolsList: React.FC<{
         const headerRect = toolHeader.getBoundingClientRect();
         const contentRect = toolContent.getBoundingClientRect();
 
-        // Check if this tool's content is visible but its header is scrolled out of view
-        const headerIsAboveViewport = headerRect.bottom < viewportTop;
-        const contentIsVisible =
-          contentRect.bottom > viewportTop && contentRect.top < window.innerHeight;
+        // More stable rule:
+        // - header is above the scroll container top
+        // - and the tool's content spans the top edge of the scroll container
+        const headerIsAboveTop = headerRect.bottom <= viewportTop;
+        const contentSpansTop = contentRect.top < viewportTop && contentRect.bottom > viewportTop;
 
-        if (headerIsAboveViewport && contentIsVisible) {
+        if (headerIsAboveTop && contentSpansTop) {
           currentTool = toolName;
         }
       });
 
-      setStickyToolName(currentTool);
+      // Avoid unnecessary state updates (and layout churn) while scrolling.
+      setStickyToolName((prev) => (Object.is(prev, currentTool) ? prev : currentTool));
     };
 
-    scrollContainer.addEventListener('scroll', handleScroll);
-    handleScroll(); // Initial check
+    const handleScroll = () => {
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        updateStickyTool();
+      });
+    };
 
-    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+    scrollContainer.addEventListener('scroll', handleScroll, options);
+    handleScroll(); // Initial check (via rAF)
+
+    return () => {
+      if (rafId != null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      scrollContainer.removeEventListener('scroll', handleScroll, options);
+    };
   }, [expandedTools, scrollContainerRef, tools]);
 
   // Notify parent about sticky tool changes
