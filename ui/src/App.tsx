@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   FolderOpen,
   Activity,
@@ -321,7 +321,11 @@ const ChatBubble: React.FC<{ message: NormalizedMessage }> = ({ message }) => {
 };
 
 // Tools list with sticky header support
-const ToolsList: React.FC<{ tools: NormalizedTool[]; scrollContainerRef: React.RefObject<HTMLDivElement | null> }> = ({ tools, scrollContainerRef }) => {
+const ToolsList: React.FC<{
+  tools: NormalizedTool[];
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  onStickyToolChange?: (toolName: string | null, toggleFn: (() => void) | null, scrollFn: (() => void) | null) => void;
+}> = ({ tools, scrollContainerRef, onStickyToolChange }) => {
   const [stickyToolName, setStickyToolName] = useState<string | null>(null);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const toolsContainerRef = useRef<HTMLDivElement>(null);
@@ -397,39 +401,24 @@ const ToolsList: React.FC<{ tools: NormalizedTool[]; scrollContainerRef: React.R
     return () => scrollContainer.removeEventListener('scroll', handleScroll);
   }, [scrollContainerRef, tools, expandedTools]);
 
+  // Notify parent about sticky tool changes
+  useEffect(() => {
+    if (onStickyToolChange) {
+      if (stickyToolName) {
+        onStickyToolChange(
+          stickyToolName,
+          () => toggleTool(stickyToolName),
+          () => scrollToTool(stickyToolName)
+        );
+      } else {
+        onStickyToolChange(null, null, null);
+      }
+    }
+  }, [stickyToolName, onStickyToolChange]);
+
   return (
     <div ref={toolsContainerRef} className="relative">
-      {/* Sticky Tool Name Header - fixed position below main header */}
-      {stickyToolName && (
-        <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-0 bg-white dark:bg-[#0f172a] border-b border-orange-200 dark:border-orange-800/50 shadow-sm">
-          <div className="px-6 py-0">
-            <div className="max-w-4xl mx-auto">
-              <div className="flex items-center justify-between py-2.5">
-                {/* Clickable area to scroll to tool */}
-                <div
-                  className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1"
-                  onClick={() => scrollToTool(stickyToolName)}
-                  title="Click to scroll to this tool"
-                >
-                  <div className="p-1.5 bg-orange-100 dark:bg-orange-950/50 rounded text-orange-600 dark:text-orange-400">
-                    <Box size={14} />
-                  </div>
-                  <span className="font-mono font-bold text-sm text-orange-700 dark:text-orange-300">{stickyToolName}</span>
-                </div>
-                {/* Collapse button */}
-                <button
-                  className="p-1.5 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded transition-colors"
-                  onClick={() => toggleTool(stickyToolName)}
-                  title="Collapse this tool"
-                >
-                  <ChevronDown size={16} className="text-orange-500 dark:text-orange-400" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      <div className={`grid gap-3 ${stickyToolName ? 'mt-6' : ''}`}>
+      <div className="grid gap-3">
         {tools.map((tool, i) => (
           <ToolDefinitionControlled
             key={i}
@@ -529,6 +518,21 @@ const App: React.FC = () => {
   const [editingRequestNote, setEditingRequestNote] = useState<string | null>(null);
   const [chatScrollEdges, setChatScrollEdges] = useState({ atTop: true, atBottom: true });
   const [isJsonWrapped, setIsJsonWrapped] = useState(false);
+
+  // Sticky tool header state
+  const [stickyToolInfo, setStickyToolInfo] = useState<{
+    name: string | null;
+    toggleFn: (() => void) | null;
+    scrollFn: (() => void) | null;
+  }>({ name: null, toggleFn: null, scrollFn: null });
+
+  const handleStickyToolChange = useCallback((
+    toolName: string | null,
+    toggleFn: (() => void) | null,
+    scrollFn: (() => void) | null
+  ) => {
+    setStickyToolInfo({ name: toolName, toggleFn, scrollFn });
+  }, []);
 
   // --- Annotation API ---
 
@@ -740,6 +744,13 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [isDarkMode]);
+
+  // Clear sticky tool info when switching away from tools tab
+  useEffect(() => {
+    if (activeTab !== 'tools') {
+      setStickyToolInfo({ name: null, toggleFn: null, scrollFn: null });
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -1206,7 +1217,7 @@ const App: React.FC = () => {
                 </header>
 
                 {/* Content Area */}
-                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar bg-white dark:bg-[#0f172a]">
+                <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-6 pb-6 scroll-smooth custom-scrollbar bg-white dark:bg-[#0f172a]">
 
                   {/* Chat View */}
                   {activeTab === 'chat' && (
@@ -1280,25 +1291,61 @@ const App: React.FC = () => {
 
                   {/* Tools View */}
                   {activeTab === 'tools' && (
-                    <div className="max-w-4xl mx-auto">
-                       <div className="mb-6 flex items-center justify-between">
-                         <h3 className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                            <Box size={18} className="text-orange-500 dark:text-orange-400"/>
-                            Available Tools
-                         </h3>
-                         <span className="text-xs bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full text-slate-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700">
-                           {currentExchange.tools?.length || 0} definitions
-                         </span>
-                       </div>
-                       {currentExchange.tools && currentExchange.tools.length > 0 ? (
-                          <ToolsList tools={currentExchange.tools} scrollContainerRef={chatScrollRef} />
-                       ) : (
-                         <div className="p-12 text-center text-slate-500 border border-dashed border-gray-200 dark:border-slate-800 rounded-xl bg-gray-50 dark:bg-slate-900/20">
-                           <Box size={32} className="mx-auto mb-3 opacity-20"/>
-                           No tools defined in this request.
+                    <>
+                      {/* Sticky Tool Header - rendered outside max-w-4xl for proper sticky behavior */}
+                      {stickyToolInfo.name && (
+                        <div className="sticky top-0 z-10 -mx-6 bg-white dark:bg-[#0f172a] border-b border-orange-200 dark:border-orange-800/50 shadow-sm">
+                          <div className="px-6">
+                            <div className="max-w-4xl mx-auto">
+                              <div className="flex items-center justify-between py-2">
+                                {/* Clickable area to scroll to tool */}
+                                <div
+                                  className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity flex-1"
+                                  onClick={() => stickyToolInfo.scrollFn?.()}
+                                  title="Click to scroll to this tool"
+                                >
+                                  <div className="p-1.5 bg-orange-100 dark:bg-orange-950/50 rounded text-orange-600 dark:text-orange-400">
+                                    <Box size={14} />
+                                  </div>
+                                  <span className="font-mono font-bold text-sm text-orange-700 dark:text-orange-300">{stickyToolInfo.name}</span>
+                                </div>
+                                {/* Collapse button */}
+                                <button
+                                  className="p-1.5 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded transition-colors"
+                                  onClick={() => stickyToolInfo.toggleFn?.()}
+                                  title="Collapse this tool"
+                                >
+                                  <ChevronDown size={16} className="text-orange-500 dark:text-orange-400" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className={`max-w-4xl mx-auto ${stickyToolInfo.name ? 'pt-4' : ''}`}>
+                         <div className="mb-6 flex items-center justify-between">
+                           <h3 className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                              <Box size={18} className="text-orange-500 dark:text-orange-400"/>
+                              Available Tools
+                           </h3>
+                           <span className="text-xs bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full text-slate-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700">
+                             {currentExchange.tools?.length || 0} definitions
+                           </span>
                          </div>
-                       )}
-                    </div>
+                         {currentExchange.tools && currentExchange.tools.length > 0 ? (
+                            <ToolsList
+                              tools={currentExchange.tools}
+                              scrollContainerRef={chatScrollRef}
+                              onStickyToolChange={handleStickyToolChange}
+                            />
+                         ) : (
+                           <div className="p-12 text-center text-slate-500 border border-dashed border-gray-200 dark:border-slate-800 rounded-xl bg-gray-50 dark:bg-slate-900/20">
+                             <Box size={32} className="mx-auto mb-3 opacity-20"/>
+                             No tools defined in this request.
+                           </div>
+                         )}
+                      </div>
+                    </>
                   )}
 
                   {/* Raw JSON View */}
