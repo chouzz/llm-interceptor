@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import click
-from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
@@ -24,12 +23,15 @@ from cci.config import get_cert_info, load_config
 if TYPE_CHECKING:
     from cci.config import CCIConfig
     from cci.watch import WatchManager
-from cci.logger import setup_logger
+
+from cci.logger import get_console, setup_logger
 from cci.merger import merge_streams
 from cci.splitter import split_records
 from cci.storage import count_records
 
-console = Console()
+# Use the shared console from logger module for coordinated output
+# This ensures proper coordination between Live displays and logging
+console = get_console()
 
 
 @click.group()
