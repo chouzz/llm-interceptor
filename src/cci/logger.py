@@ -2,6 +2,7 @@
 Logging configuration for Claude-Code-Inspector.
 
 Implements a tiered logging system with INFO, DEBUG, and ERROR levels.
+Provides a shared Console instance for unified Rich output.
 """
 
 import logging
@@ -10,11 +11,29 @@ from pathlib import Path
 from rich.console import Console
 from rich.logging import RichHandler
 
-# Create console for rich output
-console = Console(stderr=True)
+# Create a single shared console for all Rich output
+# Using force_terminal=True ensures consistent behavior
+# Using stderr=True keeps logs separate from stdout
+console = Console(stderr=True, force_terminal=True)
 
 # Custom logger name
 LOGGER_NAME = "cci"
+
+# Module-level reference to the current RichHandler for dynamic updates
+_rich_handler: RichHandler | None = None
+
+
+def get_console() -> Console:
+    """
+    Get the shared Console instance.
+
+    This console should be used for ALL Rich output (status, panels, tables, etc.)
+    to ensure proper coordination with logging output and Live displays.
+
+    Returns:
+        The shared Console instance
+    """
+    return console
 
 
 def setup_logger(
@@ -33,6 +52,8 @@ def setup_logger(
     Returns:
         Configured logger instance
     """
+    global _rich_handler
+
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
 
@@ -40,15 +61,16 @@ def setup_logger(
     logger.handlers.clear()
 
     # Rich console handler for pretty terminal output
-    rich_handler = RichHandler(
+    # Using the shared console ensures coordination with Live displays
+    _rich_handler = RichHandler(
         console=console,
         show_time=True,
         show_path=False,
         rich_tracebacks=True,
         tracebacks_show_locals=level.upper() == "DEBUG",
     )
-    rich_handler.setLevel(getattr(logging, level.upper(), logging.INFO))
-    logger.addHandler(rich_handler)
+    _rich_handler.setLevel(getattr(logging, level.upper(), logging.INFO))
+    logger.addHandler(_rich_handler)
 
     # File handler if specified
     if log_file:
