@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { AnnotationData } from '../types';
 import { debounce } from '../utils/ui';
 
@@ -20,6 +20,36 @@ export function useAnnotations(options: { apiBase: string }) {
     }
     return { session_note: '', requests: {} } satisfies AnnotationData;
   };
+
+  // Batch fetch annotations for multiple sessions
+  const fetchAllAnnotations = useCallback(
+    async (sessionIds: string[]) => {
+      const results: Record<string, AnnotationData> = {};
+      
+      // Fetch all annotations in parallel
+      const fetchPromises = sessionIds.map(async (sessionId) => {
+        try {
+          const res = await fetch(`${apiBase}/api/sessions/${sessionId}/annotations`);
+          if (res.ok) {
+            const data = (await res.json()) as AnnotationData;
+            results[sessionId] = data;
+          } else {
+            results[sessionId] = { session_note: '', requests: {} };
+          }
+        } catch (error) {
+          console.error(`Failed to fetch annotations for ${sessionId}`, error);
+          results[sessionId] = { session_note: '', requests: {} };
+        }
+      });
+
+      await Promise.all(fetchPromises);
+      
+      // Update state with all fetched annotations
+      setAnnotations((prev) => ({ ...prev, ...results }));
+      return results;
+    },
+    [apiBase]
+  );
 
   const saveAnnotations = async (sessionId: string, data: AnnotationData) => {
     try {
@@ -73,6 +103,7 @@ export function useAnnotations(options: { apiBase: string }) {
     setAnnotations,
     ensureLoaded,
     fetchAnnotations,
+    fetchAllAnnotations,
     updateSessionNote,
     updateRequestNote,
   };
