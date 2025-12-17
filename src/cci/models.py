@@ -1,5 +1,5 @@
 """
-Data models for Claude-Code-Inspector.
+Data models for LLM Interceptor.
 
 Defines the JSON schema for request, response chunk, and response meta records.
 """
@@ -124,4 +124,3 @@ class MergedRecord(BaseModel):
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat() + "Z"}
-

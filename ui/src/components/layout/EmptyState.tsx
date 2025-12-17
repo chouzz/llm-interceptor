@@ -21,7 +21,7 @@ export const EmptyState: React.FC<{
         <FolderOpen size={64} className="text-blue-500 dark:text-blue-400" />
       </div>
       <h1 className="text-5xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 dark:from-blue-400 dark:via-indigo-400 dark:to-emerald-400">
-        Claude Code Inspector
+        LLM Interceptor
       </h1>
 
       {isLoadingList ? (
@@ -32,7 +32,7 @@ export const EmptyState: React.FC<{
       ) : (
         <p className="max-w-md text-slate-600 dark:text-slate-400 mb-10 leading-relaxed text-lg">
           No sessions found in the traces directory. <br />
-          Run <code>cci watch</code> to capture new sessions.
+          Run <code>lli watch</code> to capture new sessions.
         </p>
       )}
     </div>

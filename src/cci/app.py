@@ -9,16 +9,13 @@ import streamlit as st
 # ================= 1. Config & Utils =================
 
 # Set page config first
-st.set_page_config(
-    layout="wide",
-    page_title="AI Traffic Inspector",
-    page_icon="🔍"
-)
+st.set_page_config(layout="wide", page_title="LLM Interceptor", page_icon="🔍")
 
 # Determine BASE_DIR relative to the project root
 # Assuming this script is in src/cci/app.py and traces is in project root
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BASE_DIR = PROJECT_ROOT / "traces"
+
 
 def parse_file_info(filename: str) -> tuple[int | None, str | None, str | None]:
     """
@@ -31,6 +28,7 @@ def parse_file_info(filename: str) -> tuple[int | None, str | None, str | None]:
     if match:
         return int(match.group(1)), match.group(2), match.group(3)
     return None, None, None
+
 
 def load_session_turns(session_path: Path) -> list[dict[str, Any]]:
     """
@@ -65,13 +63,13 @@ def load_session_turns(session_path: Path) -> list[dict[str, Any]]:
                 "req": None,
                 "res": None,
                 "req_file": None,
-                "res_file": None
+                "res_file": None,
             }
 
         # Read content
         file_path = target_dir / f
         try:
-            with open(file_path, encoding='utf-8') as fp:
+            with open(file_path, encoding="utf-8") as fp:
                 content = json.load(fp)
         except Exception as e:
             content = {"error": f"JSON Decode Fail: {str(e)}"}
@@ -84,23 +82,23 @@ def load_session_turns(session_path: Path) -> list[dict[str, Any]]:
             turns_map[seq_id]["res_file"] = f
 
     # Convert to list and sort
-    sorted_turns = sorted(turns_map.values(), key=lambda x: x['seq_id'])
+    sorted_turns = sorted(turns_map.values(), key=lambda x: x["seq_id"])
 
     # --- Context Analysis Logic ---
     last_ctx_len = 0
     last_sys_prompt = ""
 
     for i, turn in enumerate(sorted_turns):
-        req = turn['req'] or {}
-        msgs = req.get('messages', [])
+        req = turn["req"] or {}
+        msgs = req.get("messages", [])
 
         # 1. Extract current features
         current_ctx_len = len(msgs)
 
         # Extract System Prompt Fingerprint (first 50 chars)
         current_sys_prompt = "No System"
-        if msgs and msgs[0].get('role') == 'system':
-            content = msgs[0].get('content', '')
+        if msgs and msgs[0].get("role") == "system":
+            content = msgs[0].get("content", "")
             if isinstance(content, str):
                 current_sys_prompt = content[:50]
             elif isinstance(content, list):
@@ -113,7 +111,7 @@ def load_session_turns(session_path: Path) -> list[dict[str, Any]]:
         is_switch = False
         switch_reason = ""
 
-        if i > 0: # Skip first
+        if i > 0:  # Skip first
             if current_sys_prompt != last_sys_prompt:
                 is_switch = True
                 switch_reason = "System Prompt Changed"
@@ -121,19 +119,19 @@ def load_session_turns(session_path: Path) -> list[dict[str, Any]]:
                 is_switch = True
                 switch_reason = "Context Reset"
 
-        turn['is_switch'] = is_switch
-        turn['switch_reason'] = switch_reason
-        turn['ctx_len'] = current_ctx_len
-        turn['sys_preview'] = current_sys_prompt
+        turn["is_switch"] = is_switch
+        turn["switch_reason"] = switch_reason
+        turn["ctx_len"] = current_ctx_len
+        turn["sys_preview"] = current_sys_prompt
 
         # Extract last user message for display
         last_user_msg = "No User Input"
         for m in reversed(msgs):
-            if m.get('role') == 'user':
-                content = m.get('content')
+            if m.get("role") == "user":
+                content = m.get("content")
                 if isinstance(content, list):
                     # Try to extract text from list if possible
-                    text_parts = [p.get('text', '') for p in content if p.get('type') == 'text']
+                    text_parts = [p.get("text", "") for p in content if p.get("type") == "text"]
                     if text_parts:
                         last_user_msg = " ".join(text_parts)
                     else:
@@ -141,7 +139,7 @@ def load_session_turns(session_path: Path) -> list[dict[str, Any]]:
                 else:
                     last_user_msg = content
                 break
-        turn['last_user_msg'] = last_user_msg
+        turn["last_user_msg"] = last_user_msg
 
         # Update state
         last_ctx_len = current_ctx_len
@@ -149,12 +147,14 @@ def load_session_turns(session_path: Path) -> list[dict[str, Any]]:
 
     return sorted_turns
 
+
 # ================= 2. UI Rendering =================
+
 
 def main():
     # Sidebar Styling
     with st.sidebar:
-        st.title("🔍 Inspector")
+        st.title("🔍 LLM Interceptor")
         st.markdown("---")
 
         if not BASE_DIR.exists():
@@ -169,7 +169,7 @@ def main():
             if path.is_dir():
                 sessions.append(d)
 
-        sessions = sorted(sessions, reverse=True) # Newest first
+        sessions = sorted(sessions, reverse=True)  # Newest first
 
         selected_session_name = st.selectbox("Select Session", sessions)
 
@@ -177,7 +177,7 @@ def main():
         filter_hide_short = st.checkbox(
             "Hide Background Tasks",
             value=False,
-            help="Hide tasks with history < 2 messages (often internal calls)"
+            help="Hide tasks with history < 2 messages (often internal calls)",
         )
 
         search_query = st.text_input("Keyword Search", placeholder="Search content...")
@@ -210,22 +210,22 @@ def main():
 
     for turn in turns:
         # --- Filters ---
-        if filter_hide_short and turn['ctx_len'] < 2:
+        if filter_hide_short and turn["ctx_len"] < 2:
             continue
 
         if search_query:
             # Simple case-insensitive search in user msg and response
             query = search_query.lower()
-            req_match = query in str(turn['last_user_msg']).lower()
+            req_match = query in str(turn["last_user_msg"]).lower()
 
             res_text = ""
-            if turn['res']:
+            if turn["res"]:
                 try:
-                    if 'choices' in turn['res']:
-                        res_text = turn['res']['choices'][0]['message']['content']
-                    elif 'content' in turn['res']:
+                    if "choices" in turn["res"]:
+                        res_text = turn["res"]["choices"][0]["message"]["content"]
+                    elif "content" in turn["res"]:
                         # Handle Anthropic format
-                        res_text = turn['res']['content'][0]['text']
+                        res_text = turn["res"]["content"][0]["text"]
                 except Exception:
                     pass
 
@@ -237,8 +237,8 @@ def main():
         displayed_count += 1
 
         # --- Context Switch Separator ---
-        if turn.get('is_switch'):
-            switch_reason = turn['switch_reason']
+        if turn.get("is_switch"):
+            switch_reason = turn["switch_reason"]
             st.markdown(
                 f"""
             <div style="text-align: center; color: #f97316; margin: 30px 0 20px 0;
@@ -255,9 +255,9 @@ def main():
             )
 
         # --- Card Component ---
-        req = turn['req']
-        res = turn['res']
-        model = req.get('model', 'unknown') if req else 'unknown'
+        req = turn["req"]
+        res = turn["res"]
+        model = req.get("model", "unknown") if req else "unknown"
 
         # Card Container with custom styling
         with st.container():
@@ -275,7 +275,7 @@ def main():
             # LEFT: Request
             with c1:
                 st.markdown("**User Input**")
-                st.info(turn['last_user_msg'], icon="👤")
+                st.info(turn["last_user_msg"], icon="👤")
 
                 with st.popover("📄 Full Request JSON", use_container_width=True):
                     st.json(req)
@@ -287,19 +287,19 @@ def main():
                     # Parse AI Content
                     ai_content = "No content"
                     try:
-                        if 'choices' in res: # OpenAI format
-                            ai_content = res['choices'][0]['message']['content']
-                        elif 'content' in res: # Anthropic format
-                            content_block = res['content']
+                        if "choices" in res:  # OpenAI format
+                            ai_content = res["choices"][0]["message"]["content"]
+                        elif "content" in res:  # Anthropic format
+                            content_block = res["content"]
                             if isinstance(content_block, list) and len(content_block) > 0:
-                                ai_content = content_block[0].get('text', '')
+                                ai_content = content_block[0].get("text", "")
                             elif isinstance(content_block, str):
                                 ai_content = content_block
                     except Exception as e:
                         ai_content = f"Error parsing content: {e}"
 
                     # Check for error in response
-                    if 'error' in res:
+                    if "error" in res:
                         st.error(f"API Error: {res['error']}")
                     else:
                         st.markdown(ai_content)
@@ -314,6 +314,6 @@ def main():
     if displayed_count == 0:
         st.info("No messages match current filters.")
 
+
 if __name__ == "__main__":
     main()
-

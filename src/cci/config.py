@@ -1,5 +1,5 @@
 """
-Configuration management for Claude-Code-Inspector.
+Configuration management for LLM Interceptor.
 
 Supports loading from TOML/YAML files or environment variables.
 """
@@ -70,7 +70,7 @@ class StorageConfig(BaseModel):
     """Storage configuration."""
 
     # Default output file
-    output_file: str = "cci_trace.jsonl"
+    output_file: str = "lli_trace.jsonl"
     # Enable pretty JSON (for debugging, not recommended for production)
     pretty_json: bool = False
     # Max file size before rotation (0 = no rotation)
@@ -87,7 +87,7 @@ class LoggingConfig(BaseModel):
 
 
 class CCIConfig(BaseModel):
-    """Main configuration model for Claude-Code-Inspector."""
+    """Main configuration model for LLM Interceptor (legacy name kept for compatibility)."""
 
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     filter: FilterConfig = Field(default_factory=FilterConfig)
@@ -102,10 +102,12 @@ def load_config(config_path: str | Path | None = None) -> CCIConfig:
 
     Priority:
     1. Explicit config path
-    2. ./cci.toml or ./cci.yaml
-    3. ~/.config/cci/config.toml or config.yaml
-    4. Environment variables
-    5. Defaults
+    2. ./lli.toml or ./lli.yaml (preferred)
+    3. ./cci.toml or ./cci.yaml (legacy)
+    4. ~/.config/lli/config.toml or config.yaml (preferred)
+    5. ~/.config/cci/config.toml or config.yaml (legacy)
+    6. Environment variables
+    7. Defaults
 
     Args:
         config_path: Optional explicit path to config file
@@ -122,11 +124,15 @@ def load_config(config_path: str | Path | None = None) -> CCIConfig:
         search_paths.append(Path(config_path))
     else:
         # Current directory
+        search_paths.extend([Path("lli.toml"), Path("lli.yaml"), Path("lli.yml")])
         search_paths.extend([Path("cci.toml"), Path("cci.yaml"), Path("cci.yml")])
         # User config directory
         config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
         search_paths.extend(
             [
+                config_home / "lli" / "config.toml",
+                config_home / "lli" / "config.yaml",
+                config_home / "lli" / "config.yml",
                 config_home / "cci" / "config.toml",
                 config_home / "cci" / "config.yaml",
                 config_home / "cci" / "config.yml",
@@ -161,6 +167,12 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     """Apply environment variable overrides to config."""
     # Map environment variables to config paths
     env_mapping = {
+        # Preferred (new) names
+        "LLI_PROXY_HOST": ("proxy", "host"),
+        "LLI_PROXY_PORT": ("proxy", "port"),
+        "LLI_OUTPUT_FILE": ("storage", "output_file"),
+        "LLI_LOG_LEVEL": ("logging", "level"),
+        # Legacy names (kept for backward compatibility)
         "CCI_PROXY_HOST": ("proxy", "host"),
         "CCI_PROXY_PORT": ("proxy", "port"),
         "CCI_OUTPUT_FILE": ("storage", "output_file"),
@@ -173,7 +185,9 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
             _set_nested(config, path, value)
 
     # Handle include patterns from env (comma-separated)
-    include_patterns = os.environ.get("CCI_INCLUDE_PATTERNS")
+    include_patterns = os.environ.get("LLI_INCLUDE_PATTERNS") or os.environ.get(
+        "CCI_INCLUDE_PATTERNS"
+    )
     if include_patterns:
         if "filter" not in config:
             config["filter"] = {}
@@ -209,4 +223,3 @@ def get_cert_info() -> dict[str, Any]:
         "exists": cert_path.exists(),
         "mitmproxy_dir": str(cert_path.parent),
     }
-

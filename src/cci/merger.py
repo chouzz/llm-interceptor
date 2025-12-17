@@ -1,5 +1,5 @@
 """
-Stream merger utility for Claude-Code-Inspector.
+Stream merger utility for LLM Interceptor.
 
 Aggregates streaming response chunks into complete request-response pairs.
 """
@@ -122,9 +122,7 @@ class StreamMerger:
                             request_id, request_chunks, meta
                         )
                     else:
-                        response = self._rebuild_openai_response(
-                            request_id, request_chunks, meta
-                        )
+                        response = self._rebuild_openai_response(request_id, request_chunks, meta)
 
                     writer.write_record(response)
                     stats["streaming_requests"] += 1
@@ -362,9 +360,7 @@ class StreamMerger:
         # Track choices by index
         choices_content: dict[int, list[str]] = defaultdict(list)
         choices_tool_calls: dict[int, dict[int, dict[str, Any]]] = defaultdict(dict)
-        choices_tool_args: dict[int, dict[int, list[str]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
+        choices_tool_args: dict[int, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
         choices_finish_reason: dict[int, str | None] = {}
         choices_role: dict[int, str] = {}
 
@@ -421,9 +417,7 @@ class StreamMerger:
                                 },
                             }
                         if "function" in tc and "arguments" in tc["function"]:
-                            choices_tool_args[index][tc_index].append(
-                                tc["function"]["arguments"]
-                            )
+                            choices_tool_args[index][tc_index].append(tc["function"]["arguments"])
 
                 # Track finish reason
                 if "finish_reason" in choice and choice["finish_reason"]:

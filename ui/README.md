@@ -1,10 +1,10 @@
-# Claude Code Inspector UI
+# LLM Interceptor UI
 
-A modern, React-based interface for analyzing Claude Code sessions.
+A modern, React-based interface for analyzing captured AI coding tool sessions.
 
 ## Features
 
-- **Real-time Monitoring**: Automatically detects and displays active sessions from `cci watch`.
+- **Real-time Monitoring**: Automatically detects and displays active sessions from `lli watch`.
 - **Deep Inspection**: View detailed request/response headers, bodies, and latency.
 - **Rich Visualization**:
     - **Chat View**: Rendered Markdown conversations with role-based styling.
@@ -16,11 +16,11 @@ A modern, React-based interface for analyzing Claude Code sessions.
 
 ## Usage
 
-This UI is bundled with the `claude-code-inspector` Python package.
+This UI is bundled with the `llm-interceptor` Python package.
 
 1.  **Start Watch Mode**:
     ```bash
-    cci watch --include "*example.com*"
+    lli watch --include "*example.com*"
     ```
 
 2.  **Open the Dashboard**:

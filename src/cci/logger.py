@@ -1,5 +1,5 @@
 """
-Logging configuration for Claude-Code-Inspector.
+Logging configuration for LLM Interceptor.
 
 Implements a tiered logging system with INFO, DEBUG, and ERROR levels.
 Provides a shared Console instance for unified Rich output.
@@ -16,8 +16,8 @@ from rich.logging import RichHandler
 # Using stderr=True keeps logs separate from stdout
 console = Console(stderr=True, force_terminal=True)
 
-# Custom logger name
-LOGGER_NAME = "cci"
+# Custom logger name (kept stable for backward compatibility in log routing)
+LOGGER_NAME = "llm_interceptor"
 
 # Module-level reference to the current RichHandler for dynamic updates
 _rich_handler: RichHandler | None = None
@@ -42,7 +42,7 @@ def setup_logger(
     log_format: str | None = None,
 ) -> logging.Logger:
     """
-    Set up the CCI logger with the specified configuration.
+    Set up the LLI logger with the specified configuration.
 
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR)
@@ -88,7 +88,7 @@ def setup_logger(
 
 
 def get_logger() -> logging.Logger:
-    """Get the CCI logger instance."""
+    """Get the LLI logger instance."""
     return logging.getLogger(LOGGER_NAME)
 
 
@@ -154,8 +154,8 @@ def log_startup_banner(host: str, port: int) -> None:
     console.print()
     # fmt: off
     console.print("[bold cyan]╔══════════════════════════════════════════════════════════╗[/]")  # noqa: E501
-    console.print("[bold cyan]║[/]  [bold white]Claude-Code-Inspector (CCI)[/]                            [bold cyan]║[/]")  # noqa: E501
-    console.print("[bold cyan]║[/]  [dim]MITM Proxy for LLM API Traffic Analysis[/]               [bold cyan]║[/]")  # noqa: E501
+    console.print("[bold cyan]║[/]  [bold white]LLM Interceptor (LLI)[/]                                 [bold cyan]║[/]")  # noqa: E501
+    console.print("[bold cyan]║[/]  [dim]MITM Proxy for LLM Traffic Analysis[/]                   [bold cyan]║[/]")  # noqa: E501
     console.print("[bold cyan]╠══════════════════════════════════════════════════════════╣[/]")  # noqa: E501
     console.print(f"[bold cyan]║[/]  Proxy listening on: [bold green]{host}:{port}[/]                 [bold cyan]║[/]")  # noqa: E501
     console.print("[bold cyan]║[/]                                                          [bold cyan]║[/]")  # noqa: E501
@@ -164,4 +164,3 @@ def log_startup_banner(host: str, port: int) -> None:
     console.print("[bold cyan]╚══════════════════════════════════════════════════════════╝[/]")  # noqa: E501
     # fmt: on
     console.print()
-
