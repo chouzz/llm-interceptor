@@ -56,6 +56,7 @@ def setup_logger(
 
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+    logger.propagate = False
 
     # Clear existing handlers
     logger.handlers.clear()
@@ -68,6 +69,7 @@ def setup_logger(
         show_path=False,
         rich_tracebacks=True,
         tracebacks_show_locals=level.upper() == "DEBUG",
+        markup=True,
     )
     _rich_handler.setLevel(getattr(logging, level.upper(), logging.INFO))
     logger.addHandler(_rich_handler)
@@ -129,7 +131,7 @@ def log_request_summary(
 
     latency_str = f" ({latency_ms:.0f}ms)" if latency_ms else ""
 
-    logger.info("%s %s %s%s", method, url, status_str, latency_str, extra={"markup": True})
+    logger.info(f"{method} {url} {status_str}{latency_str}")
 
 
 def log_streaming_progress(request_id: str, chunk_count: int) -> None:

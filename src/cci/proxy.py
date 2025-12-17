@@ -7,9 +7,12 @@ Handles traffic interception, data capture, and sensitive data masking.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
+from io import StringIO
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -67,8 +70,6 @@ class WatchAddon:
             self._logger.debug("URL not matched, skipping: %s", url)
             return
 
-        self._logger.info("Capturing request: %s %s", flow.request.method, url)
-
         # Generate unique request ID
         request_id = str(uuid4())
         flow_id = id(flow)
@@ -97,7 +98,6 @@ class WatchAddon:
         }
 
         self.watch_manager.write_record(record)
-        log_request_summary(flow.request.method, url)
         self._logger.debug("Captured request %s to %s", request_id[:8], url)
 
     def response(self, flow: http.HTTPFlow) -> None:
@@ -146,10 +146,6 @@ class WatchAddon:
                 "total_chunks": len(sse_events),
             }
             self.watch_manager.write_record(meta_record)
-            self._logger.info(
-                "Streaming response complete: %d events in %.0fms",
-                len(sse_events), latency_ms
-            )
         else:
             # Non-streaming response - capture complete body
             headers = self._mask_headers(dict(flow.response.headers))
@@ -167,10 +163,6 @@ class WatchAddon:
                 "latency_ms": latency_ms,
             }
             self.watch_manager.write_record(record)
-            self._logger.info(
-                "Response captured: %s %s -> %d (%.0fms)",
-                flow.request.method, url, flow.response.status_code, latency_ms
-            )
 
         log_request_summary(
             flow.request.method,
@@ -328,6 +320,14 @@ async def run_watch_proxy(
     logger = get_logger()
     logger.info("Starting watch proxy on %s:%d", config.proxy.host, config.proxy.port)
 
+    mitmproxy_logger = logging.getLogger("mitmproxy")
+    mitmproxy_logger.setLevel(logging.WARNING)
+    mitmproxy_logger.propagate = False
+
+    mitmproxy_console_logger = logging.getLogger("mitmproxy.console")
+    mitmproxy_console_logger.setLevel(logging.WARNING)
+    mitmproxy_console_logger.propagate = False
+
     url_filter = URLFilter(config.filter)
 
     # Create watch addon
@@ -341,8 +341,23 @@ async def run_watch_proxy(
     )
 
     # Create and run DumpMaster
-    master = DumpMaster(opts)
-    master.addons.add(addon)
+    # Suppress mitmproxy's default console output by redirecting stdout temporarily
+    null_stream = StringIO()
+
+    # Redirect stdout during DumpMaster creation to suppress console output
+    with redirect_stdout(null_stream):
+        master = DumpMaster(opts)
+        master.addons.add(addon)
+
+    # Try to remove eventlog addon if it exists
+    try:
+        from mitmproxy.addons import eventstore
+        for addon_name in list(master.addons.keys()):
+            addon_instance = master.addons[addon_name]
+            if isinstance(addon_instance, eventstore.EventStore):
+                master.addons.remove(addon_name)
+    except Exception:
+        pass
 
     logger.info("Watch proxy initialized, monitoring traffic...")
 
