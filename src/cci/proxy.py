@@ -10,7 +10,9 @@ import json
 import logging
 import re
 import time
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
+from io import StringIO
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -340,13 +342,8 @@ async def run_watch_proxy(
 
     # Create and run DumpMaster
     # Suppress mitmproxy's default console output by redirecting stdout temporarily
-    import sys
-    from contextlib import redirect_stdout
-    from io import StringIO
-    
-    # Create a null output stream
     null_stream = StringIO()
-    
+
     # Redirect stdout during DumpMaster creation to suppress console output
     with redirect_stdout(null_stream):
         master = DumpMaster(opts)
