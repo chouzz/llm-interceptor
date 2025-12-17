@@ -146,7 +146,6 @@ class WatchAddon:
                 "total_chunks": len(sse_events),
             }
             self.watch_manager.write_record(meta_record)
-            # Final summary will be logged by log_request_summary below
         else:
             # Non-streaming response - capture complete body
             headers = self._mask_headers(dict(flow.response.headers))
@@ -164,9 +163,7 @@ class WatchAddon:
                 "latency_ms": latency_ms,
             }
             self.watch_manager.write_record(record)
-            # Final summary will be logged by log_request_summary below
 
-        # Log final request summary with status code and latency
         log_request_summary(
             flow.request.method,
             url,
@@ -323,13 +320,10 @@ async def run_watch_proxy(
     logger = get_logger()
     logger.info("Starting watch proxy on %s:%d", config.proxy.host, config.proxy.port)
 
-    # Disable mitmproxy's default logging to avoid duplicate/conflicting logs
-    # We use our own logging system instead
     mitmproxy_logger = logging.getLogger("mitmproxy")
-    mitmproxy_logger.setLevel(logging.WARNING)  # Only show warnings and errors
-    mitmproxy_logger.propagate = False  # Don't propagate to root logger
+    mitmproxy_logger.setLevel(logging.WARNING)
+    mitmproxy_logger.propagate = False
     
-    # Also disable mitmproxy console output
     mitmproxy_console_logger = logging.getLogger("mitmproxy.console")
     mitmproxy_console_logger.setLevel(logging.WARNING)
     mitmproxy_console_logger.propagate = False

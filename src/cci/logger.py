@@ -62,14 +62,13 @@ def setup_logger(
 
     # Rich console handler for pretty terminal output
     # Using the shared console ensures coordination with Live displays
-    # markup=True enables Rich markup parsing in log messages
     _rich_handler = RichHandler(
         console=console,
         show_time=True,
         show_path=False,
         rich_tracebacks=True,
         tracebacks_show_locals=level.upper() == "DEBUG",
-        markup=True,  # Enable Rich markup parsing
+        markup=True,
     )
     _rich_handler.setLevel(getattr(logging, level.upper(), logging.INFO))
     logger.addHandler(_rich_handler)
