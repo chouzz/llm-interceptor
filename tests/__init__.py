@@ -1,2 +1,1 @@
-"""Tests for Claude-Code-Inspector."""
-
+"""Tests for LLM Interceptor."""

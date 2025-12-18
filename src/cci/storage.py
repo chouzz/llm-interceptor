@@ -1,5 +1,5 @@
 """
-JSONL storage for Claude-Code-Inspector.
+JSONL storage for LLM Interceptor.
 
 Handles writing request/response records to JSONL files.
 """
@@ -188,4 +188,3 @@ def count_records(file_path: str | Path) -> dict[str, int]:
         record_type = record.get("type", "unknown")
         counts[record_type] = counts.get(record_type, 0) + 1
     return counts
-

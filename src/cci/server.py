@@ -1,5 +1,5 @@
 """
-FastAPI server for the Claude Code Inspector UI.
+FastAPI server for the LLM Interceptor UI.
 
 Serves the React frontend and provides API endpoints for session data.
 """
@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from cci.watch import WatchManager
 
 # Get logger
-logger = logging.getLogger("cci.server")
+logger = logging.getLogger("llm_interceptor.server")
 
 
 def _ensure_static_mime_types():
@@ -55,7 +55,7 @@ class ServerState:
 
 def create_app(watch_manager: WatchManager) -> FastAPI:
     """Create and configure the FastAPI application."""
-    app = FastAPI(title="Claude Code Inspector API")
+    app = FastAPI(title="LLM Interceptor API")
     state = ServerState(watch_manager)
 
     # Enable CORS for development

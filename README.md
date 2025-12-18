@@ -1,11 +1,11 @@
-# Claude-Code-Inspector (CCI)
+# LLM Interceptor (LLI)
 
 <p align="center">
-  <strong>🔍 MITM Proxy for LLM API Traffic Analysis</strong>
+  <strong>🔍 Proxy-layer microscope for LLM traffic analysis</strong>
 </p>
 
 <p align="center">
-  A cross-platform command-line tool that intercepts, analyzes, and logs communications between AI coding assistants (Claude Code, Cursor, Codex, Gemini-CLI, etc.) and their backend LLM APIs.
+  A cross-platform command-line tool that intercepts, analyzes, and logs communications between AI coding tools/agents (Claude Code, Cursor, Codex, Gemini-CLI, etc.) and their backend LLM APIs.
 </p>
 
 ---
@@ -25,22 +25,24 @@
 ### Using pip
 
 ```bash
-pip install claude-code-inspector
+pip install llm-interceptor
 ```
 
 ### Using uv (recommended)
 
 ```bash
-uv add claude-code-inspector
+uv add llm-interceptor
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/chouzz/claude-code-inspector.git
-cd claude-code-inspector
+git clone https://github.com/chouzz/llm-interceptor.git
+cd llm-interceptor
 uv sync
 ```
+
+> Note: This project was formerly named **claude-code-inspector**. The new canonical name is **llm-interceptor**.
 
 ## 🚀 Quick Start
 
@@ -48,7 +50,7 @@ uv sync
 
 ```bash
 # Generate certificate
-cci watch &
+lli watch &
 sleep 2
 kill %1
 ```
@@ -74,7 +76,7 @@ Navigate to `%USERPROFILE%\.mitmproxy\`, double-click `mitmproxy-ca-cert.pem` �
 ### 2. Start Watch Mode
 
 ```bash
-cci watch
+lli watch
 ```
 
 ### 3. Configure Your Application (New Terminal)
@@ -107,10 +109,10 @@ Watch mode uses a state machine with three states:
 ### Example Session
 
 ```
-$ cci watch
+$ lli watch
 
 ╭─────────────────────────╮
-│   CCI Watch Mode        │
+│   LLI Watch Mode        │
 │ Continuous Capture      │
 ╰─────────────────────────╯
 
@@ -157,12 +159,12 @@ Configure your application:
 
 ## 📋 CLI Reference
 
-### `cci watch`
+### `lli watch`
 
 Start watch mode for continuous session capture (recommended).
 
 ```bash
-cci watch [OPTIONS]
+lli watch [OPTIONS]
 
 Options:
   -p, --port INTEGER       Proxy server port (default: 9090)
@@ -175,16 +177,16 @@ Options:
 
 ```bash
 # Basic watch mode
-cci watch
+lli watch
 
 # Custom port and output directory
-cci watch --port 8888 --output-dir ./my_traces
+lli watch --port 8888 --output-dir ./my_traces
 
 # Include custom API endpoint (glob pattern)
-cci watch --include "*my-custom-api.com*"
+lli watch --include "*my-custom-api.com*"
 
 # Match all subdomains of a domain
-cci watch --include "*api.example.com*"
+lli watch --include "*api.example.com*"
 ```
 
 **Glob Pattern Syntax:**
@@ -196,27 +198,27 @@ cci watch --include "*api.example.com*"
 | `[seq]` | Matches any character in seq |
 | `[!seq]` | Matches any character not in seq |
 
-### `cci config`
+### `lli config`
 
 Display configuration and setup help.
 
 ```bash
-cci config --cert-help    # Certificate installation instructions
-cci config --proxy-help   # Proxy configuration instructions
-cci config --show         # Show current configuration
+lli config --cert-help    # Certificate installation instructions
+lli config --proxy-help   # Proxy configuration instructions
+lli config --show         # Show current configuration
 ```
 
-### `cci stats`
+### `lli stats`
 
 Display statistics for a captured trace file.
 
 ```bash
-cci stats traces/01_session_xxx/raw.jsonl
+lli stats traces/01_session_xxx/raw.jsonl
 ```
 
 ## 🔧 Supported LLM Providers
 
-CCI is pre-configured to capture traffic from:
+LLI is pre-configured to capture traffic from:
 
 | Provider | API Domain |
 |----------|------------|
@@ -231,7 +233,7 @@ CCI is pre-configured to capture traffic from:
 
 Add custom providers with `--include` (using glob patterns):
 ```bash
-cci watch --include "*my-custom-api.com*"
+lli watch --include "*my-custom-api.com*"
 ```
 
 ## 🐛 Troubleshooting
@@ -240,7 +242,7 @@ cci watch --include "*my-custom-api.com*"
 
 **Problem:** `SSL: CERTIFICATE_VERIFY_FAILED`
 
-**Solution:** Install the mitmproxy CA certificate. Run `cci config --cert-help` for instructions.
+**Solution:** Install the mitmproxy CA certificate. Run `lli config --cert-help` for instructions.
 
 ### Node.js Apps Not Working
 
@@ -258,7 +260,7 @@ export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem
 **Solution:**
 1. Verify proxy environment variables are set correctly
 2. Make sure the URL matches the default patterns (or add `--include`)
-3. Check `cci config --show` to see current filter patterns
+3. Check `lli config --show` to see current filter patterns
 
 ## 📜 License
 
@@ -270,5 +272,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📞 Support
 
-- GitHub Issues: [Report a bug](https://github.com/chouzz/claude-code-inspector/issues)
-- Documentation: [Read the docs](https://github.com/chouzz/claude-code-inspector#readme)
+- GitHub Issues: [Report a bug](https://github.com/chouzz/llm-interceptor/issues)
+- Documentation: [Read the docs](https://github.com/chouzz/llm-interceptor#readme)

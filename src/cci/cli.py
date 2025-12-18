@@ -1,7 +1,8 @@
 """
-Command-line interface for Claude-Code-Inspector.
+Command-line interface for LLM Interceptor.
 
-Provides the `cci` command with subcommands for watch, merge, split, config, and stats.
+Provides the `lli` command (and legacy alias `cci`) with subcommands for watch,
+merge, split, config, and stats.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ console = get_console()
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="cci")
+@click.version_option(version=__version__)
 @click.option(
     "--config",
     "-c",
@@ -46,9 +47,9 @@ console = get_console()
 @click.pass_context
 def main(ctx: click.Context, config_path: str | None) -> None:
     """
-    Claude-Code-Inspector (CCI) - MITM Proxy for LLM API Traffic Analysis.
+    LLM Interceptor (LLI) - MITM Proxy for LLM Traffic Analysis.
 
-    Intercept, analyze, and log communications between AI coding assistants
+    Intercept, analyze, and log communications between AI coding tools/agents
     and their backend LLM APIs.
     """
     ctx.ensure_object(dict)
@@ -81,7 +82,7 @@ def merge(input_file: str, output_file: str) -> None:
 
     Example:
 
-        cci merge --input raw_trace.jsonl --output merged.jsonl
+        lli merge --input raw_trace.jsonl --output merged.jsonl
     """
     setup_logger("INFO")
 
@@ -143,7 +144,7 @@ def split(input_file: str, output_dir: str) -> None:
 
     Example:
 
-        cci split --input merged.jsonl --output-dir ./analysis
+        lli split --input merged.jsonl --output-dir ./analysis
     """
     setup_logger("INFO")
 
@@ -202,11 +203,11 @@ def config(
 
     Examples:
 
-        cci config --cert-help
+        lli config --cert-help
 
-        cci config --proxy-help
+        lli config --proxy-help
 
-        cci config --show
+        lli config --show
     """
     if cert_help:
         _show_cert_help()
@@ -345,7 +346,7 @@ def stats(file: str) -> None:
 
     Example:
 
-        cci stats my_trace.jsonl
+        lli stats my_trace.jsonl
     """
     setup_logger("INFO")
 
@@ -421,11 +422,11 @@ def watch(
 
     Examples:
 
-        cci watch
+        lli watch
 
-        cci watch --port 9090 --output-dir ./my_traces
+        lli watch --port 9090 --output-dir ./my_traces
 
-        cci watch --include "*my-custom-api.com*"
+        lli watch --include "*my-custom-api.com*"
 
     Configure your target application to use this proxy:
 
@@ -458,7 +459,7 @@ def watch(
     if not cert_info["exists"]:
         console.print(
             "[yellow]⚠ mitmproxy CA certificate not found.[/]\n"
-            "  Run 'cci config --cert-help' for installation instructions.\n"
+            "  Run 'lli config --cert-help' for installation instructions.\n"
             "  The certificate will be generated on first run.\n"
         )
 
@@ -556,7 +557,7 @@ def _display_watch_banner(
     console.print()
     console.print(
         Panel.fit(
-            "[bold cyan]CCI Watch Mode[/]\n" "[dim]Continuous Capture Interface[/]",
+            "[bold cyan]LLI Watch Mode[/]\n" "[dim]Continuous Capture Interface[/]",
             border_style="cyan",
         )
     )
@@ -672,9 +673,7 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
             # This branch handles the case where we enter the loop already in RECORDING state
             # (e.g., after an error or unexpected state transition)
             session_id = (
-                watch_manager.current_session.session_id
-                if watch_manager.current_session
-                else "?"
+                watch_manager.current_session.session_id if watch_manager.current_session else "?"
             )
             rec_status_text = (
                 f"[bold red]◉[/] [red][REC][/] Session [bold]{session_id}[/] recording  "

@@ -1,5 +1,5 @@
 """
-Watch mode for Claude-Code-Inspector.
+Watch mode for LLM Interceptor.
 
 Provides continuous capture with session management:
 - IDLE: Monitor traffic without session assignment
@@ -21,6 +21,7 @@ from cci.logger import get_logger
 
 class WatchState(Enum):
     """State machine states for watch mode."""
+
     IDLE = "IDLE"
     RECORDING = "RECORDING"
     PROCESSING = "PROCESSING"
@@ -34,6 +35,7 @@ class SessionContext:
     Tracks the session ID, timestamps, and file offsets
     for extracting session data from the global log.
     """
+
     session_id: str
     start_time: datetime
     start_offset: int = 0
@@ -129,7 +131,7 @@ class GlobalLogger:
         start_offset: int,
         end_offset: int,
         dest_path: str | Path,
-        filter_control_frames: bool = True
+        filter_control_frames: bool = True,
     ) -> int:
         """
         Extract data between two offsets to a destination file.
@@ -151,9 +153,10 @@ class GlobalLogger:
 
         record_count = 0
 
-        with open(self.filepath, encoding="utf-8") as src, \
-             open(dest_path, "w", encoding="utf-8") as dst:
-
+        with (
+            open(self.filepath, encoding="utf-8") as src,
+            open(dest_path, "w", encoding="utf-8") as dst,
+        ):
             src.seek(start_offset)
             current_pos = start_offset
 
@@ -179,7 +182,10 @@ class GlobalLogger:
 
         self._logger.info(
             "Extracted %d records from offset %d-%d to %s",
-            record_count, start_offset, end_offset, dest_path
+            record_count,
+            start_offset,
+            end_offset,
+            dest_path,
         )
 
         return record_count
@@ -195,11 +201,7 @@ class WatchManager:
     - Session data extraction and processing
     """
 
-    def __init__(
-        self,
-        output_dir: str | Path = "./traces",
-        port: int = 9090
-    ):
+    def __init__(self, output_dir: str | Path = "./traces", port: int = 9090):
         """
         Initialize the watch manager.
 
@@ -278,10 +280,7 @@ class WatchManager:
 
         # Inject session ID based on current state
         session_id = self.current_session_id
-        record_with_session = {
-            "_session_id": session_id,
-            **record
-        }
+        record_with_session = {"_session_id": session_id, **record}
 
         self._global_logger.write_record(record_with_session)
 
@@ -312,7 +311,7 @@ class WatchManager:
             start_marker = {
                 "_meta_type": "session_start",
                 "session_id": session_id,
-                "timestamp": timestamp.isoformat()
+                "timestamp": timestamp.isoformat(),
             }
             self._global_logger.write_record(start_marker)
 
@@ -321,9 +320,7 @@ class WatchManager:
 
             # Create session context
             session = SessionContext(
-                session_id=session_id,
-                start_time=timestamp,
-                start_offset=start_offset
+                session_id=session_id, start_time=timestamp, start_offset=start_offset
             )
 
             self._current_session = session
@@ -361,7 +358,7 @@ class WatchManager:
             end_marker = {
                 "_meta_type": "session_end",
                 "session_id": session.session_id,
-                "timestamp": session.end_time.isoformat()
+                "timestamp": session.end_time.isoformat(),
             }
             self._global_logger.write_record(end_marker)
 
@@ -369,7 +366,9 @@ class WatchManager:
 
             self._logger.info(
                 "Stopped recording session: %s (offset %d-%d)",
-                session.session_id, session.start_offset, session.end_offset
+                session.session_id,
+                session.start_offset,
+                session.end_offset,
             )
             return session
 
@@ -409,15 +408,11 @@ class WatchManager:
 
             # Extract raw data to temp file
             record_count = self._global_logger.extract_segment(
-                session.start_offset,
-                session.end_offset,
-                raw_path,
-                filter_control_frames=True
+                session.start_offset, session.end_offset, raw_path, filter_control_frames=True
             )
 
             self._logger.info(
-                "Extracted %d records for session %s",
-                record_count, session.session_id
+                "Extracted %d records for session %s", record_count, session.session_id
             )
 
             # Run merge and split if records exist
@@ -430,7 +425,7 @@ class WatchManager:
                         "Merged %d requests (%d streaming, %d non-streaming)",
                         merge_stats["total_requests"],
                         merge_stats["streaming_requests"],
-                        merge_stats["non_streaming_requests"]
+                        merge_stats["non_streaming_requests"],
                     )
 
                     # Run split - output directly to session directory
@@ -440,7 +435,7 @@ class WatchManager:
                     self._logger.info(
                         "Split into %d request files, %d response files",
                         split_stats["request_files"],
-                        split_stats["response_files"]
+                        split_stats["response_files"],
                     )
                 except Exception as e:
                     self._logger.error("Error processing session: %s", e)
@@ -457,5 +452,3 @@ class WatchManager:
     def get_session_dir(self, session: SessionContext) -> Path:
         """Get the output directory path for a session."""
         return self.output_dir / session.directory_name
-
-

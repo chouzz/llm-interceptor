@@ -102,7 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial release of Claude-Code-Inspector (CCI)
+- Initial release (project formerly known as Claude-Code-Inspector / CCI)
 - **Core Features**
   - MITM proxy server using mitmproxy for traffic interception
   - Support for both streaming (SSE) and non-streaming API responses

@@ -1,5 +1,5 @@
 """
-mitmproxy addon for Claude-Code-Inspector.
+mitmproxy addon for LLM Interceptor.
 
 Handles traffic interception, data capture, and sensitive data masking.
 """
@@ -117,7 +117,10 @@ class WatchAddon:
 
         self._logger.debug(
             "Response received: %s %s (streaming=%s, content-type=%s)",
-            flow.response.status_code, url, is_streaming, content_type
+            flow.response.status_code,
+            url,
+            is_streaming,
+            content_type,
         )
 
         if is_streaming:
@@ -352,6 +355,7 @@ async def run_watch_proxy(
     # Try to remove eventlog addon if it exists
     try:
         from mitmproxy.addons import eventstore
+
         for addon_name in list(master.addons.keys()):
             addon_instance = master.addons[addon_name]
             if isinstance(addon_instance, eventstore.EventStore):

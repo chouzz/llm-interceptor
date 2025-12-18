@@ -1,5 +1,5 @@
 """
-Record splitter utility for Claude-Code-Inspector.
+Record splitter utility for LLM Interceptor.
 
 Splits merged JSONL files into individual JSON files (request and response).
 """
@@ -91,9 +91,7 @@ class RecordSplitter:
 
         return stats
 
-    def _generate_filename(
-        self, index: int, record_type: str, record: dict[str, Any]
-    ) -> str:
+    def _generate_filename(self, index: int, record_type: str, record: dict[str, Any]) -> str:
         """
         Generate filename for a record.
 

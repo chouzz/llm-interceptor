@@ -1,5 +1,5 @@
 """
-URL filtering for Claude-Code-Inspector.
+URL filtering for LLM Interceptor.
 
 Provides pattern-based filtering to capture only relevant LLM API traffic.
 """
@@ -169,4 +169,3 @@ def get_provider_patterns(providers: list[str]) -> list[str]:
         if provider_lower in KNOWN_LLM_ENDPOINTS:
             patterns.extend(KNOWN_LLM_ENDPOINTS[provider_lower])
     return patterns
-

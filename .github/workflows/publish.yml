@@ -61,7 +61,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_pypi == 'true'
     environment:
       name: test-pypi
-      url: https://test.pypi.org/project/claude-code-inspector/
+      url: https://test.pypi.org/project/llm-interceptor/
 
     permissions:
       id-token: write
@@ -84,7 +84,7 @@ jobs:
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_pypi == 'false')
     environment:
       name: pypi
-      url: https://pypi.org/project/claude-code-inspector/
+      url: https://pypi.org/project/llm-interceptor/
 
     permissions:
       id-token: write

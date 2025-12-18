@@ -1,9 +1,9 @@
-"""Basic tests for Claude-Code-Inspector."""
+"""Basic tests for LLM Interceptor."""
 
 import pytest
 
 from cci import __version__
-from cci.config import CCIConfig, FilterConfig, load_config
+from cci.config import CCIConfig, FilterConfig
 from cci.filters import URLFilter
 from cci.models import RecordType, RequestRecord
 from cci.storage import JSONLWriter
@@ -209,4 +209,3 @@ class TestStorage:
             content = f.read()
         assert "request" in content
         assert "anthropic" in content
-

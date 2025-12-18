@@ -1,5 +1,7 @@
 # LLM Interceptor Configuration
 # Copy this file to lli.toml and customize as needed
+#
+# Backward-compatible note: the legacy file name `cci.toml` is still supported.
 
 [proxy]
 # Proxy server binding address
