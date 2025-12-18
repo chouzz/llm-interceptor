@@ -10,6 +10,8 @@
 
 ---
 
+![CCI Web UI](cci-ui-screenshot.png)
+
 ## ✨ Features
 
 - **Watch Mode** - Interactive continuous capture with session management
@@ -19,6 +21,8 @@
 - **Automatic Masking** - Protects API keys and sensitive data in logs
 - **Auto Processing** - Automatically merges and splits session data
 - **Cross-Platform** - Works on Windows, macOS, and Linux
+
+
 
 ## 📦 Installation
 
@@ -46,7 +50,9 @@ uv sync
 
 ## 🚀 Quick Start
 
-### 1. Install Certificate (First Time Only)
+### 1. Install Certificate (For HTTPS Capture Only)
+
+If you're only capturing HTTP traffic, you can skip this step. Only install the certificate if you need to capture HTTPS requests.
 
 ```bash
 # Generate certificate
@@ -73,28 +79,41 @@ sudo update-ca-certificates
 **Windows:**
 Navigate to `%USERPROFILE%\.mitmproxy\`, double-click `mitmproxy-ca-cert.pem` → Install Certificate → Local Machine → Trusted Root Certification Authorities
 
-### 2. Start Watch Mode
+### 2. Start Watch Mode and Record Sessions
 
 ```bash
 lli watch
 ```
 
-### 3. Configure Your Application (New Terminal)
+In watch mode:
+- **Press Enter** to start recording a session
+- **Press Enter** again to stop recording and automatically process the session
+- **Ctrl+C** to exit watch mode
+
+### 3. Configure Your Application and Start Dialogue (New Terminal)
 
 ```bash
 export HTTP_PROXY=http://127.0.0.1:9090
 export HTTPS_PROXY=http://127.0.0.1:9090
 export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem
 
-# Run your AI tool
-claude -p "hello"
+# Run Claude and start your conversation
+claude
+# Now start your dialogue - all prompts and responses will be captured
 ```
 
-### 4. Record Sessions
+### 4. Visualize with Web UI
 
-- **Press Enter** in watch mode to start recording
-- **Press Enter** again to stop and process the session
-- **Ctrl+C** to exit watch mode
+The web interface should be launched in http://127.0.0.0.1:8000 to analyze captured conversations:
+
+In the UI, you can:
+- Browse captured sessions in the sidebar
+- View conversation flow between requests and responses
+- Inspect detailed API payloads and metadata
+- Search and filter through captured data
+- Copy formatted content for further analysis
+
+
 
 ## 🎬 How Watch Mode Works
 
