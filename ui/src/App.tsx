@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { EmptyState } from './components/layout/EmptyState';
 import { ExchangeDetailsPane } from './components/layout/ExchangeDetailsPane';
-import { RequestsPane } from './components/layout/RequestsPane';
+import { MemoizedRequestsPane } from './components/layout/RequestsPane';
 import { SessionsSidebar } from './components/layout/SessionsSidebar';
 import { useAnnotations } from './hooks/useAnnotations';
 import { useResizablePanels } from './hooks/useResizablePanels';
@@ -44,12 +44,12 @@ const App: React.FC = () => {
   // Preload annotations for all sessions when session list changes
   useEffect(() => {
     if (sessionList.length === 0) return;
-    
+
     // Find sessions that haven't been loaded yet
     const unloadedSessionIds = sessionList
       .map((s) => s.id)
       .filter((id) => !(id in annotations));
-    
+
     if (unloadedSessionIds.length > 0) {
       void fetchAllAnnotations(unloadedSessionIds);
     }
@@ -97,7 +97,7 @@ const App: React.FC = () => {
             onUpdateSessionNote={updateSessionNote}
           />
 
-          <RequestsPane
+          <MemoizedRequestsPane
             width={requestsWidth}
             isCollapsed={isRequestsCollapsed}
             setIsCollapsed={setIsRequestsCollapsed}

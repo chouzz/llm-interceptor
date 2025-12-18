@@ -63,12 +63,12 @@ export const ExchangeDetailsPane: React.FC<{
 
   const requestBodyText = useMemo(
     () => (currentExchange ? safeJSONStringify(currentExchange.rawRequest) : ''),
-    [currentExchange]
+    [currentExchange?.rawRequest]
   );
 
   const responseBodyText = useMemo(
     () => (currentExchange?.rawResponse ? safeJSONStringify(currentExchange.rawResponse) : ''),
-    [currentExchange]
+    [currentExchange?.rawResponse]
   );
 
   useEffect(() => {

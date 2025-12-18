@@ -6,7 +6,7 @@ import { ToolCallBlock } from './ToolCallBlock';
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-export const MessageContent: React.FC<{ content: unknown }> = ({ content }) => {
+export const MessageContent: React.FC<{ content: unknown }> = React.memo(({ content }) => {
   // Handle String content
   if (typeof content === 'string') {
     return (
@@ -98,4 +98,4 @@ export const MessageContent: React.FC<{ content: unknown }> = ({ content }) => {
   }
 
   return <div className="text-red-500 dark:text-red-400">Unrenderable content type</div>;
-};
+});

@@ -5,7 +5,7 @@ import { extractTextContent } from '../../utils/ui';
 import { CopyButton } from '../common/CopyButton';
 import { MessageContent } from './MessageContent';
 
-export const ChatBubble: React.FC<{ message: NormalizedMessage }> = ({ message }) => {
+export const ChatBubble: React.FC<{ message: NormalizedMessage }> = React.memo(({ message }) => {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const textContent = useMemo(() => extractTextContent(message.content), [message.content]);
@@ -64,4 +64,4 @@ export const ChatBubble: React.FC<{ message: NormalizedMessage }> = ({ message }
       </div>
     </div>
   );
-};
+});
