@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-12-18
+
+### Added
+
+- **LLM Interceptor branding** - Complete rebranding from Claude Code Inspector to LLM Interceptor (LLI)
+- **Performance optimizations** - Base performance improvements for better efficiency
+
+### Changed
+
+- **Project rename** - Renamed from `cci` to `lli` (LLM Interceptor) across all components
+- **CLI command** - Primary command changed from `cci` to `lli`
+- **Package name** - Updated package name to `llm-interceptor`
+- **Log improvements** - Enhanced log output coloring and deduplication for better readability
+
+---
+
 ## [1.4.0] - 2025-12-16
 
 ### Added
