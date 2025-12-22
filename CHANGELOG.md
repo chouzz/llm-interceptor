@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2025-12-22
+
+### Changed
+
+- **App icon update** - Updated `cci-icon.png` with transparent rounded corners
+  - Replaced white background corners with transparent alpha channel
+  - Updated icon to 512×512 PNG format for better visual integration
+  - Icon now displays well on both dark and light backgrounds
+- **UI screenshot** - Updated `cci-ui-screenshot.png` to reflect latest UI changes
+
 ## [2.0.0] - 2025-12-18
 
 ### Added
