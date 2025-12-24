@@ -88,6 +88,7 @@ lli watch
 In watch mode:
 - **Press Enter** to start recording a session
 - **Press Enter** again to stop recording and automatically process the session
+- **Press Esc** while recording to cancel the current session (no output generated)
 - **Ctrl+C** to exit watch mode
 
 ### 3. Configure Your Application and Start Dialogue (New Terminal)
@@ -149,7 +150,7 @@ Configure your application:
 <Enter>
 
 ◉ [REC] Session 01_session_20251203_223010 is recording...
-  Press [Enter] to STOP & PROCESS
+  Press [Enter] to STOP & PROCESS, [Esc] to CANCEL
 <Enter>
 
 ⏳ [BUSY] Processing Session 01_session_20251203_223010...

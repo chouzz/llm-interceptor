@@ -372,6 +372,57 @@ class WatchManager:
             )
             return session
 
+    def cancel_recording(self) -> SessionContext:
+        """
+        Cancel the current recording session without processing.
+
+        Transitions from RECORDING back to IDLE state, clears the current
+        session, and advances the session counter.
+
+        Note:
+            Captured traffic remains in the global log, but no session directory
+            is created and no merge/split processing is performed.
+
+        Returns:
+            The cancelled SessionContext with end offset/time set.
+
+        Raises:
+            RuntimeError: If not in RECORDING state
+        """
+        with self._state_lock:
+            if self._state != WatchState.RECORDING:
+                raise RuntimeError(f"Cannot cancel recording from {self._state} state")
+
+            if not self._global_logger or not self._current_session:
+                raise RuntimeError("Invalid state: no active session")
+
+            session = self._current_session
+
+            # Record end offset/time at moment of cancellation
+            session.end_offset = self._global_logger.get_current_offset()
+            session.end_time = datetime.now()
+
+            # Write cancel marker
+            cancel_marker = {
+                "_meta_type": "session_cancelled",
+                "session_id": session.session_id,
+                "timestamp": session.end_time.isoformat(),
+            }
+            self._global_logger.write_record(cancel_marker)
+
+            # Transition back to IDLE without processing
+            self._current_session = None
+            self._session_seq += 1
+            self._state = WatchState.IDLE
+
+            self._logger.info(
+                "Cancelled recording session: %s (offset %d-%d)",
+                session.session_id,
+                session.start_offset,
+                session.end_offset,
+            )
+            return session
+
     def process_session(self, session: SessionContext) -> Path:
         """
         Process a completed session.

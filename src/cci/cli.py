@@ -12,6 +12,7 @@ import socket
 import sys
 import threading
 from pathlib import Path
+from typing import Literal
 from typing import TYPE_CHECKING
 
 import click
@@ -412,8 +413,8 @@ def watch(
     Start watch mode for continuous session capture.
 
     Watch mode provides an interactive interface to capture multiple
-    coding sessions. Press Enter to toggle between IDLE and RECORDING
-    states.
+    coding sessions. Press Enter to start/stop processing a session.
+    While recording, press Esc to cancel the current session.
 
     State Machine:
       - IDLE: Traffic is captured but not assigned to a session
@@ -642,29 +643,37 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
                 # Display RECORDING status with spinner pinned at bottom
                 rec_status_text = (
                     f"[bold red]◉[/] [red][REC][/] Session [bold]{session_id}[/] recording  "
-                    f"[dim]Press [Enter] to STOP & PROCESS[/]"
+                    f"[dim]Press [Enter] to STOP & PROCESS, [Esc] to CANCEL[/]"
                 )
 
                 with console.status(rec_status_text, spinner="point", spinner_style="red"):
                     try:
-                        input()
+                        key = _wait_for_enter_or_escape()
                     except EOFError:
                         break
 
                 if stop_event.is_set():
                     break
 
-                # Stop recording and process
-                session = watch_manager.stop_recording()
-                console.print(
-                    f"\n[bold yellow]⏳[/] [yellow][BUSY][/] Processing "
-                    f"Session [bold]{session_id}[/]..."
-                )
+                if key == "escape":
+                    watch_manager.cancel_recording()
+                    console.print(
+                        f"\n[bold yellow]✖[/] [yellow][CANCEL][/]"
+                        f" Session [bold]{session_id}[/] cancelled (no output generated)."
+                    )
+                    console.print()
+                else:
+                    # Stop recording and process
+                    session = watch_manager.stop_recording()
+                    console.print(
+                        f"\n[bold yellow]⏳[/] [yellow][BUSY][/] Processing "
+                        f"Session [bold]{session_id}[/]..."
+                    )
 
-                # Process the session
-                session_dir = watch_manager.process_session(session)
-                console.print(f"  [green]✔[/] Saved to [cyan]{session_dir}/[/]")
-                console.print()
+                    # Process the session
+                    session_dir = watch_manager.process_session(session)
+                    console.print(f"  [green]✔[/] Saved to [cyan]{session_dir}/[/]")
+                    console.print()
 
             except RuntimeError as e:
                 console.print(f"[red]Error:[/] {e}")
@@ -677,31 +686,39 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
             )
             rec_status_text = (
                 f"[bold red]◉[/] [red][REC][/] Session [bold]{session_id}[/] recording  "
-                f"[dim]Press [Enter] to STOP & PROCESS[/]"
+                f"[dim]Press [Enter] to STOP & PROCESS, [Esc] to CANCEL[/]"
             )
 
             with console.status(rec_status_text, spinner="point", spinner_style="red"):
                 try:
-                    input()
+                    key = _wait_for_enter_or_escape()
                 except EOFError:
                     break
 
             if stop_event.is_set():
                 break
 
-            # Stop recording and process
             try:
-                session = watch_manager.stop_recording()
-                session_id = session.session_id
-                console.print(
-                    f"\n[bold yellow]⏳[/] [yellow][BUSY][/] Processing "
-                    f"Session [bold]{session_id}[/]..."
-                )
+                if key == "escape":
+                    cancelled = watch_manager.cancel_recording()
+                    console.print(
+                        f"\n[bold yellow]✖[/] [yellow][CANCEL][/]"
+                        f" Session [bold]{cancelled.session_id}[/] cancelled (no output generated)."
+                    )
+                    console.print()
+                else:
+                    # Stop recording and process
+                    session = watch_manager.stop_recording()
+                    session_id = session.session_id
+                    console.print(
+                        f"\n[bold yellow]⏳[/] [yellow][BUSY][/] Processing "
+                        f"Session [bold]{session_id}[/]..."
+                    )
 
-                # Process the session
-                session_dir = watch_manager.process_session(session)
-                console.print(f"  [green]✔[/] Saved to [cyan]{session_dir}/[/]")
-                console.print()
+                    # Process the session
+                    session_dir = watch_manager.process_session(session)
+                    console.print(f"  [green]✔[/] Saved to [cyan]{session_dir}/[/]")
+                    console.print()
             except RuntimeError as e:
                 console.print(f"[red]Error processing session:[/] {e}")
 
@@ -710,6 +727,45 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
             import time
 
             time.sleep(0.1)
+
+
+def _wait_for_enter_or_escape() -> Literal["enter", "escape"]:
+    """
+    Wait for a single keypress: Enter or Escape.
+
+    Falls back to line-buffered input when stdin is not a TTY (e.g. piped).
+    """
+    if not sys.stdin.isatty():
+        input()
+        return "enter"
+
+    if sys.platform.startswith("win"):
+        # Windows: use msvcrt for unbuffered key input
+        import msvcrt
+
+        while True:
+            ch = msvcrt.getwch()
+            if ch in ("\r", "\n"):
+                return "enter"
+            if ch == "\x1b":
+                return "escape"
+    else:
+        # POSIX: temporarily switch terminal to raw mode
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            while True:
+                ch = sys.stdin.read(1)
+                if ch in ("\r", "\n"):
+                    return "enter"
+                if ch == "\x1b":
+                    return "escape"
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 def _is_port_in_use(host: str, port: int) -> bool:
