@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-12-24
+
+### Added
+
+- **Watch mode cancellation** - Added ability to cancel recording with Ctrl+C
+  - Properly handles cleanup when recording is interrupted
+  - New test coverage for watch cancel functionality
+
+### Changed
+
+- **Annotation UI improvements**
+  - Fixed session annotation: changed button to div for proper group-hover behavior
+  - Moved annotation display/editor inside cards for better visual consistency
+  - Added blur-to-save functionality for seamless annotation editing
+  - Unified styling between sessions and requests panels
+  - Added Tooltip for full annotation preview on hover
+  - Made annotation cards clickable for editing
+- **Icon placement** - Moved app icon from project root to ui/public/ directory
+
+### Fixed
+
+- **Group-hover functionality** - Fixed hover buttons not appearing in session cards
+- **Annotation editing** - Clicking outside annotation editor now auto-saves
+
 ## [2.0.1] - 2025-12-22
 
 ### Changed
