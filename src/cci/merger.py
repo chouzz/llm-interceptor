@@ -23,31 +23,28 @@ class StreamMerger:
     records and produces a new file with separate request and response lines.
     """
 
-    def __init__(self, input_path: str | Path, output_path: str | Path):
+    def __init__(
+        self, input_path: str | Path, output_path: str | Path, session_id: str | None = None
+    ):
         """
         Initialize the stream merger.
 
         Args:
             input_path: Path to input JSONL file with raw chunks
             output_path: Path to output JSONL file for merged records
+            session_id: Optional session ID to filter records. If provided,
+                       only records matching this session_id (or with None session_id)
+                       will be processed.
         """
         self.input_path = Path(input_path)
         self.output_path = Path(output_path)
+        self.session_id = session_id
         self._logger = get_logger()
 
     def merge(self) -> dict[str, int]:
         """
         Perform the merge operation.
-
-        Output format is alternating request/response lines:
-        - Line 1: request JSON
-        - Line 2: response JSON (merged from chunks if streaming)
-        - Line 3: next request JSON
-        - Line 4: next response JSON
-        - etc.
-
-        Returns:
-            Statistics about the merge operation
+        ...
         """
         self._logger.info("Reading records from %s", self.input_path)
         records = read_jsonl(self.input_path)
@@ -62,6 +59,18 @@ class StreamMerger:
         request_order: list[str] = []
 
         for record in records:
+            # Filter by session ID if requested
+            if self.session_id:
+                record_session_id = record.get("_session_id")
+                # Allow records with matching session ID or None (for robustness)
+                if record_session_id and record_session_id != self.session_id:
+                    self._logger.debug(
+                        "Skipping record with mismatching session ID: %s (expected %s)",
+                        record_session_id,
+                        self.session_id,
+                    )
+                    continue
+
             record_type = record.get("type", "")
 
             if record_type == "request":
@@ -658,16 +667,19 @@ class StreamMerger:
         return datetime.utcnow()
 
 
-def merge_streams(input_path: str | Path, output_path: str | Path) -> dict[str, int]:
+def merge_streams(
+    input_path: str | Path, output_path: str | Path, session_id: str | None = None
+) -> dict[str, int]:
     """
     Convenience function to merge streaming chunks.
 
     Args:
         input_path: Path to input JSONL file
         output_path: Path to output JSONL file
+        session_id: Optional session ID filter
 
     Returns:
         Statistics about the merge operation
     """
-    merger = StreamMerger(input_path, output_path)
+    merger = StreamMerger(input_path, output_path, session_id=session_id)
     return merger.merge()

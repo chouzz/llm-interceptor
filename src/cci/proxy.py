@@ -59,6 +59,7 @@ class WatchAddon:
         # Track in-flight requests
         self._request_times: dict[int, float] = {}
         self._request_ids: dict[int, str] = {}
+        self._request_sessions: dict[int, str | None] = {}
 
     def request(self, flow: http.HTTPFlow) -> None:
         """Handle an outgoing request."""
@@ -75,6 +76,10 @@ class WatchAddon:
         flow_id = id(flow)
         self._request_ids[flow_id] = request_id
         self._request_times[flow_id] = time.time()
+
+        # Capture current session ID for this request
+        session_id = self.watch_manager.current_session_id
+        self._request_sessions[flow_id] = session_id
 
         # Parse headers (with masking)
         headers = self._mask_headers(dict(flow.request.headers))
@@ -97,7 +102,7 @@ class WatchAddon:
             "body": body,
         }
 
-        self.watch_manager.write_record(record)
+        self.watch_manager.write_record(record, session_id=session_id)
         self._logger.debug("Captured request %s to %s", request_id[:8], url)
 
     def response(self, flow: http.HTTPFlow) -> None:
@@ -110,6 +115,9 @@ class WatchAddon:
         request_id = self._request_ids.get(flow_id, str(uuid4()))
         start_time = self._request_times.get(flow_id, time.time())
         latency_ms = (time.time() - start_time) * 1000
+
+        # Use the session ID from the request start
+        session_id = self._request_sessions.get(flow_id)
 
         # Check if this is a streaming response
         content_type = flow.response.headers.get("content-type", "")
@@ -137,7 +145,7 @@ class WatchAddon:
                     "chunk_index": chunk_index,
                     "content": event_content,
                 }
-                self.watch_manager.write_record(chunk_record)
+                self.watch_manager.write_record(chunk_record, session_id=session_id)
                 log_streaming_progress(request_id, chunk_index)
 
             # Write meta record with chunk count
@@ -148,7 +156,7 @@ class WatchAddon:
                 "status_code": flow.response.status_code,
                 "total_chunks": len(sse_events),
             }
-            self.watch_manager.write_record(meta_record)
+            self.watch_manager.write_record(meta_record, session_id=session_id)
         else:
             # Non-streaming response - capture complete body
             headers = self._mask_headers(dict(flow.response.headers))
@@ -165,7 +173,7 @@ class WatchAddon:
                 "body": body,
                 "latency_ms": latency_ms,
             }
-            self.watch_manager.write_record(record)
+            self.watch_manager.write_record(record, session_id=session_id)
 
         log_request_summary(
             flow.request.method,
@@ -307,6 +315,7 @@ class WatchAddon:
         """Clean up tracking data for a completed flow."""
         self._request_times.pop(flow_id, None)
         self._request_ids.pop(flow_id, None)
+        self._request_sessions.pop(flow_id, None)
 
 
 async def run_watch_proxy(

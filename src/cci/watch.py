@@ -268,18 +268,22 @@ class WatchManager:
             self._global_logger = None
         self._logger.info("Watch mode shutdown complete")
 
-    def write_record(self, record: dict[str, Any]) -> None:
+    def write_record(self, record: dict[str, Any], session_id: str | None = None) -> None:
         """
         Write a record to the global log with session ID injection.
 
         Args:
             record: Record data to write
+            session_id: Optional session ID to override the current one.
+                      Used for responses to requests that started in a previous session.
         """
         if not self._global_logger:
             raise RuntimeError("WatchManager not initialized. Call initialize() first.")
 
-        # Inject session ID based on current state
-        session_id = self.current_session_id
+        # Inject session ID: use provided one, or current one, or None
+        if session_id is None:
+            session_id = self.current_session_id
+
         record_with_session = {"_session_id": session_id, **record}
 
         self._global_logger.write_record(record_with_session)
@@ -304,8 +308,9 @@ class WatchManager:
                 raise RuntimeError("WatchManager not initialized")
 
             # Generate session ID (timestamp-based for easy identification)
+            # Add sequence number to avoid collisions if multiple sessions start within one second
             timestamp = datetime.now()
-            session_id = f"session_{timestamp.strftime('%Y%m%d_%H%M%S')}"
+            session_id = f"session_{timestamp.strftime('%Y%m%d_%H%M%S')}_{self._session_seq}"
 
             # Write start marker
             start_marker = {
@@ -471,7 +476,9 @@ class WatchManager:
                 from cci.merger import merge_streams
 
                 try:
-                    merge_stats = merge_streams(raw_path, merged_path)
+                    merge_stats = merge_streams(
+                        raw_path, merged_path, session_id=session.session_id
+                    )
                     self._logger.info(
                         "Merged %d requests (%d streaming, %d non-streaming)",
                         merge_stats["total_requests"],
