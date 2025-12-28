@@ -137,7 +137,7 @@ $ lli watch
 ╰─────────────────────────╯
 
   Proxy Port:    9090
-  Output Dir:    ./traces
+  Output Dir:    ./traces (or OS-specific logs directory)
   Global Log:    traces/all_captured_20251203_220000.jsonl
 
 Configure your application:
@@ -187,9 +187,9 @@ Start watch mode for continuous session capture (recommended).
 lli watch [OPTIONS]
 
 Options:
-  -p, --port INTEGER       Proxy server port (default: 9090)
-  -o, --output-dir PATH    Root output directory (default: ./traces)
-  -i, --include TEXT       Additional URL patterns to include (glob pattern)
+  -p, --port INTEGER           Proxy server port (default: 9090)
+  -o, --output-dir, --log-dir PATH  Root output directory (default: ./traces or OS log dir)
+  -i, --include TEXT           Additional URL patterns to include (glob pattern)
   --debug                  Enable debug mode with verbose logging
 ```
 

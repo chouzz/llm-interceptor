@@ -223,3 +223,41 @@ def get_cert_info() -> dict[str, Any]:
         "exists": cert_path.exists(),
         "mitmproxy_dir": str(cert_path.parent),
     }
+
+
+def get_default_trace_dir() -> Path:
+    """
+    Get the default directory for trace logs.
+
+    Priority:
+    1. ./traces (if it exists)
+    2. OS-specific standard directories:
+       - Windows: %LOCALAPPDATA%\\llm-interceptor\traces
+       - macOS: ~/Library/Logs/llm-interceptor
+       - Linux: ~/.cache/llm-interceptor
+    """
+    # 1. Check if we are in the project root or current dir has traces/
+    local_traces = Path.cwd() / "traces"
+    if local_traces.is_dir():
+        return local_traces
+
+    # 2. OS-specific standard directories
+    if sys.platform == "win32":
+        # Windows: C:\Users\<User>\AppData\Local\llm-interceptor\traces
+        app_data = os.environ.get("LOCALAPPDATA")
+        if app_data:
+            base = Path(app_data)
+        else:
+            base = Path.home() / "AppData" / "Local"
+        return base / "llm-interceptor" / "traces"
+    elif sys.platform == "darwin":
+        # macOS: ~/Library/Logs/llm-interceptor
+        return Path.home() / "Library" / "Logs" / "llm-interceptor"
+    else:
+        # Linux: ~/.cache/llm-interceptor
+        cache_home = os.environ.get("XDG_CACHE_HOME")
+        if cache_home:
+            base = Path(cache_home)
+        else:
+            base = Path.home() / ".cache"
+        return base / "llm-interceptor"
