@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from cci import __version__
-from cci.config import get_cert_info, load_config
+from cci.config import get_cert_info, get_default_trace_dir, load_config
 
 if TYPE_CHECKING:
     from cci.config import CCIConfig
@@ -377,10 +377,11 @@ def stats(file: str) -> None:
 )
 @click.option(
     "--output-dir",
+    "--log-dir",
     "-o",
+    "output_dir",
     type=click.Path(),
-    default="./traces",
-    help="Root output directory (default: ./traces)",
+    help="Root output directory (default: ./traces or OS-specific logs dir)",
 )
 @click.option(
     "--include",
@@ -450,6 +451,10 @@ def watch(
 
     if debug:
         config.logging.level = "DEBUG"
+
+    # Determine output directory
+    if output_dir is None:
+        output_dir = str(get_default_trace_dir())
 
     # Setup logging
     setup_logger(config.logging.level, config.logging.log_file)

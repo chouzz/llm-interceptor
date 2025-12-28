@@ -6,15 +6,15 @@ from typing import Any
 
 import streamlit as st
 
+from cci.config import get_default_trace_dir
+
 # ================= 1. Config & Utils =================
 
 # Set page config first
 st.set_page_config(layout="wide", page_title="LLM Interceptor", page_icon="🔍")
 
-# Determine BASE_DIR relative to the project root
-# Assuming this script is in src/cci/app.py and traces is in project root
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-BASE_DIR = PROJECT_ROOT / "traces"
+# Determine BASE_DIR using the standard logic
+BASE_DIR = get_default_trace_dir()
 
 
 def parse_file_info(filename: str) -> tuple[int | None, str | None, str | None]:

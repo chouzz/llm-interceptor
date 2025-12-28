@@ -16,6 +16,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, TextIO
 
+from cci.config import get_default_trace_dir
 from cci.logger import get_logger
 
 
@@ -201,15 +202,15 @@ class WatchManager:
     - Session data extraction and processing
     """
 
-    def __init__(self, output_dir: str | Path = "./traces", port: int = 9090):
+    def __init__(self, output_dir: str | Path | None = None, port: int = 9090):
         """
         Initialize the watch manager.
 
         Args:
-            output_dir: Root directory for all output files
+            output_dir: Root directory for all output files (default: auto-detected)
             port: Proxy server port
         """
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir) if output_dir else get_default_trace_dir()
         self.port = port
         self._logger = get_logger()
 
