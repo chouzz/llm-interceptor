@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, ChevronDown, ChevronRight, Code } from 'lucide-react';
 import type { NormalizedTool } from '../../types';
 import { JSONViewer } from '../common/JSONViewer';
+import { CopyButton } from '../common/CopyButton';
 
 // Tools list with sticky header support
 export const ToolsList: React.FC<{
@@ -183,15 +184,32 @@ const ToolDefinitionControlled = React.forwardRef<
       {expanded && (
         <div className="tool-content p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-black/20">
           {tool.description && (
-            <div className="mb-4 text-sm text-slate-600 dark:text-gray-400 italic bg-white dark:bg-slate-900 p-3 rounded border-l-2 border-gray-300 dark:border-gray-700 whitespace-pre-wrap break-words">
-              {tool.description}
+            <div className="mb-4 group/desc">
+              <div className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wide flex items-center justify-between">
+                <span>Description</span>
+                <CopyButton
+                  content={tool.description}
+                  className="opacity-0 group-hover/desc:opacity-100 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800"
+                />
+              </div>
+              <div className="text-sm text-slate-600 dark:text-gray-400 italic bg-white dark:bg-slate-900 p-3 rounded border-l-2 border-gray-300 dark:border-gray-700 whitespace-pre-wrap break-words">
+                {tool.description}
+              </div>
             </div>
           )}
-          <div className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wide flex items-center gap-2">
-            <Code size={12} />
-            Input Schema
+          <div className="group/schema">
+            <div className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wide flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Code size={12} />
+                Input Schema
+              </div>
+              <CopyButton
+                content={JSON.stringify(tool.input_schema, null, 2)}
+                className="opacity-0 group-hover/schema:opacity-100 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800"
+              />
+            </div>
+            <JSONViewer data={tool.input_schema} />
           </div>
-          <JSONViewer data={tool.input_schema} />
         </div>
       )}
     </div>

@@ -186,11 +186,19 @@ export const ExchangeDetailsPane: React.FC<{
             {activeTab === 'system' && (
               <div className="max-w-4xl mx-auto">
                 <div className="bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-slate-800 rounded-lg overflow-hidden shadow-xl">
-                  <div className="px-4 py-3 bg-gray-100 dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 flex items-center gap-2">
-                    <Terminal size={16} className="text-red-500 dark:text-red-400" />
-                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                      System Instruction
-                    </span>
+                  <div className="px-4 py-3 bg-gray-100 dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Terminal size={16} className="text-red-500 dark:text-red-400" />
+                      <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                        System Instruction
+                      </span>
+                    </div>
+                    {currentExchange.systemPrompt && (
+                      <CopyButton
+                        content={currentExchange.systemPrompt}
+                        className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700"
+                      />
+                    )}
                   </div>
                   <div className="p-6 overflow-x-auto bg-gray-50 dark:bg-transparent">
                     {currentExchange.systemPrompt ? (
