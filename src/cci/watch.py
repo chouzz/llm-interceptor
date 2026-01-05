@@ -309,9 +309,15 @@ class WatchManager:
                 raise RuntimeError("WatchManager not initialized")
 
             # Generate session ID (timestamp-based for easy identification)
-            # Add sequence number to avoid collisions if multiple sessions start within one second
+            # Ensure unique ID by bumping timestamp if directory already exists
             timestamp = datetime.now()
-            session_id = f"session_{timestamp.strftime('%Y%m%d_%H%M%S')}_{self._session_seq}"
+            session_id = f"session_{timestamp.strftime('%Y%m%d_%H%M%S')}"
+
+            while (self.output_dir / session_id).exists():
+                from datetime import timedelta
+
+                timestamp += timedelta(seconds=1)
+                session_id = f"session_{timestamp.strftime('%Y%m%d_%H%M%S')}"
 
             # Write start marker
             start_marker = {

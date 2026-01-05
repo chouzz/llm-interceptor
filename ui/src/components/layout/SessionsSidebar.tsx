@@ -144,7 +144,7 @@ export const SessionsSidebar: React.FC<{
                       }
                     />
                     <span className="font-semibold truncate max-w-[120px] text-slate-700 dark:text-slate-200" title={session.id}>
-                      {session.id.split('_').pop()}
+                      {session.id.replace('session_', '')}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
