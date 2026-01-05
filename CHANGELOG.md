@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-01-05
+
+### Added
+
+- **Copy buttons** - Added "Copy" functionality to System and Tools interfaces for easier content extraction
+- **OS-specific trace directories** - Now uses standard system directories for trace logs (XDG on Linux, Library/Logs on macOS, LocalAppData on Windows)
+- **Watch mode for development** - Added auto-rebuild watch mode for UI development
+
+### Fixed
+
+- **Session naming & UI title** - Improved session naming logic and fixed UI title display issues
+- **Session leakage & collisions** - Fixed session ID collisions and potential session leakage in watch mode
+
 ## [2.1.0] - 2025-12-24
 
 ### Added
