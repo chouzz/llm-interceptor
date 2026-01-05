@@ -57,146 +57,20 @@ export const SessionsSidebar: React.FC<{
       const isEditing = editingSessionNote === session.id;
       const isSelected = selectedSessionId === session.id;
 
-      const handleSelectSession = useCallback(() => {
-        onSelectSession(session.id);
-        if (isCollapsed) setIsCollapsed(false);
-      }, [session.id, onSelectSession, isCollapsed, setIsCollapsed]);
-
-      const handleToggleEdit = useCallback(() => {
-        setEditingSessionNote(isEditing ? null : session.id);
-      }, [isEditing, session.id]);
-
-      const handleUpdateNote = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onUpdateSessionNote(session.id, e.target.value);
-      }, [session.id, onUpdateSessionNote]);
-
-      const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Escape') {
-          setEditingSessionNote(null);
-        } else if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          setEditingSessionNote(null);
-        }
-      }, []);
-
-      const handleSaveNote = useCallback(() => {
-        setEditingSessionNote(null);
-      }, []);
-
-      const handleEditNote = useCallback(() => {
-        setEditingSessionNote(session.id);
-      }, [session.id]);
-
       return (
-        <div key={session.id}>
-          {/* Collapsed state */}
-          {isCollapsed ? (
-            <div
-              onClick={handleSelectSession}
-              className={`h-12 flex items-center justify-center cursor-pointer border-b border-gray-100 dark:border-slate-800/50 relative rounded-lg mb-1 ${
-                isSelected ? 'bg-blue-50 dark:bg-slate-800' : ''
-              }`}
-            >
-              <FolderOpen
-                size={20}
-                className={
-                  isSelected
-                    ? 'text-blue-600 dark:text-blue-400'
-                    : 'text-slate-400 dark:text-slate-600'
-                }
-              />
-              {hasNote && <div className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></div>}
-            </div>
-          ) : (
-            <div>
-              <div
-                onClick={handleSelectSession}
-                className={`px-3 py-3 border-b border-gray-100 dark:border-slate-800/50 cursor-pointer transition-colors group relative rounded-lg mb-1 ${
-                  isSelected ? 'bg-blue-50 dark:bg-slate-800/80 shadow-md z-10' : 'hover:bg-gray-50 dark:hover:bg-slate-800/30'
-                }`}
-                title={session.id}
-              >
-                {/* Action Buttons (appear on hover) */}
-                <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleToggleEdit(); }}
-                    className="p-1.5 bg-white dark:bg-slate-700 rounded shadow-sm hover:scale-110"
-                    title="Edit note"
-                    type="button"
-                  >
-                    <Pencil size={12} className="text-slate-500 dark:text-slate-300" />
-                  </button>
-                </div>
-
-                {/* Selection indicator */}
-                {isSelected && (
-                  <div className="absolute left-0 top-3 bottom-3 w-1 bg-blue-500 rounded-r-full"></div>
-                )}
-
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <FolderOpen
-                      size={16}
-                      className={
-                        isSelected
-                          ? 'text-blue-600 dark:text-blue-400'
-                          : 'text-slate-400 dark:text-slate-600'
-                      }
-                    />
-                    <span className="font-semibold truncate max-w-[120px] text-slate-700 dark:text-slate-200" title={session.id}>
-                      {session.id.replace('session_', '')}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
-                    <span>{session.request_count}</span>
-                    {hasNote && !isEditing && <MessageCircle size={10} className="text-amber-500" />}
-                  </div>
-                </div>
-                <div className="text-xs text-slate-400 dark:text-slate-500">
-                  {formatTimestamp(session.timestamp)}
-                </div>
-
-                {/* Note Section - inside the card */}
-                {!isEditing && hasNote && (
-                  <Tooltip text={sessionNote}>
-                    <div
-                      className="mt-2 px-2 py-1 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/20 rounded border-l-2 border-amber-400 dark:border-amber-600 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/30 transition-colors truncate"
-                      onClick={(e) => { e.stopPropagation(); handleEditNote(); }}
-                      title="Click to edit"
-                    >
-                      {sessionNote}
-                    </div>
-                  </Tooltip>
-                )}
-
-                {/* Note Editor - inside the card */}
-                {isEditing && (
-                  <div className="mt-2 relative">
-                    <textarea
-                      autoFocus
-                      value={sessionNote}
-                      onChange={handleUpdateNote}
-                      onKeyDown={handleKeyDown}
-                      onBlur={handleSaveNote}
-                      placeholder="Add a note..."
-                      className="w-full text-xs p-1.5 pr-6 border border-amber-300 dark:border-amber-700 rounded bg-amber-50 dark:bg-amber-950/30 text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-amber-400 dark:focus:ring-amber-600"
-                      rows={2}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleSaveNote(); }}
-                      className="absolute top-1 right-1 p-0.5 hover:bg-amber-200 dark:hover:bg-amber-800 rounded text-amber-600 dark:text-amber-400"
-                      title="Done (Enter)"
-                      type="button"
-                    >
-                      <Check size={10} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        <SessionItem
+          key={session.id}
+          session={session}
+          isCollapsed={isCollapsed}
+          isSelected={isSelected}
+          isEditing={isEditing}
+          sessionNote={sessionNote}
+          hasNote={hasNote}
+          onSelectSession={onSelectSession}
+          onSetIsCollapsed={setIsCollapsed}
+          onSetEditingSessionNote={setEditingSessionNote}
+          onUpdateSessionNote={onUpdateSessionNote}
+        />
       );
     });
   }, [
@@ -269,3 +143,169 @@ export const SessionsSidebar: React.FC<{
     </div>
   );
 };
+
+const SessionItem = React.memo<{
+  session: SessionSummary;
+  isCollapsed: boolean;
+  isSelected: boolean;
+  isEditing: boolean;
+  sessionNote: string;
+  hasNote: boolean;
+  onSelectSession: (sessionId: string) => void;
+  onSetIsCollapsed: (collapsed: boolean) => void;
+  onSetEditingSessionNote: (sessionId: string | null) => void;
+  onUpdateSessionNote: (sessionId: string, note: string) => void;
+}>(({
+  session,
+  isCollapsed,
+  isSelected,
+  isEditing,
+  sessionNote,
+  hasNote,
+  onSelectSession,
+  onSetIsCollapsed,
+  onSetEditingSessionNote,
+  onUpdateSessionNote,
+}) => {
+  const handleSelectSession = useCallback(() => {
+    onSelectSession(session.id);
+    if (isCollapsed) onSetIsCollapsed(false);
+  }, [session.id, onSelectSession, isCollapsed, onSetIsCollapsed]);
+
+  const handleToggleEdit = useCallback(() => {
+    onSetEditingSessionNote(isEditing ? null : session.id);
+  }, [isEditing, session.id, onSetEditingSessionNote]);
+
+  const handleUpdateNote = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onUpdateSessionNote(session.id, e.target.value);
+  }, [session.id, onUpdateSessionNote]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      onSetEditingSessionNote(null);
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onSetEditingSessionNote(null);
+    }
+  }, [onSetEditingSessionNote]);
+
+  const handleSaveNote = useCallback(() => {
+    onSetEditingSessionNote(null);
+  }, [onSetEditingSessionNote]);
+
+  const handleEditNote = useCallback(() => {
+    onSetEditingSessionNote(session.id);
+  }, [session.id, onSetEditingSessionNote]);
+
+  return (
+    <div>
+      {/* Collapsed state */}
+      {isCollapsed ? (
+        <div
+          onClick={handleSelectSession}
+          className={`h-12 flex items-center justify-center cursor-pointer border-b border-gray-100 dark:border-slate-800/50 relative rounded-lg mb-1 ${
+            isSelected ? 'bg-blue-50 dark:bg-slate-800' : ''
+          }`}
+        >
+          <FolderOpen
+            size={20}
+            className={
+              isSelected
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'text-slate-400 dark:text-slate-600'
+            }
+          />
+          {hasNote && <div className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></div>}
+        </div>
+      ) : (
+        <div>
+          <div
+            onClick={handleSelectSession}
+            className={`px-3 py-3 border-b border-gray-100 dark:border-slate-800/50 cursor-pointer transition-colors group relative rounded-lg mb-1 ${
+              isSelected ? 'bg-blue-50 dark:bg-slate-800/80 shadow-md z-10' : 'hover:bg-gray-50 dark:hover:bg-slate-800/30'
+            }`}
+            title={session.id}
+          >
+            {/* Action Buttons (appear on hover) */}
+            <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+              <button
+                onClick={(e) => { e.stopPropagation(); handleToggleEdit(); }}
+                className="p-1.5 bg-white dark:bg-slate-700 rounded shadow-sm hover:scale-110"
+                title="Edit note"
+                type="button"
+              >
+                <Pencil size={12} className="text-slate-500 dark:text-slate-300" />
+              </button>
+            </div>
+
+            {/* Selection indicator */}
+            {isSelected && (
+              <div className="absolute left-0 top-3 bottom-3 w-1 bg-blue-500 rounded-r-full"></div>
+            )}
+
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <FolderOpen
+                  size={16}
+                  className={
+                    isSelected
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-slate-400 dark:text-slate-600'
+                  }
+                />
+                <span className="font-semibold truncate max-w-[120px] text-slate-700 dark:text-slate-200" title={session.id}>
+                  {session.id.replace('session_', '')}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+                <span>{session.request_count}</span>
+                {hasNote && !isEditing && <MessageCircle size={10} className="text-amber-500" />}
+              </div>
+            </div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">
+              {formatTimestamp(session.timestamp)}
+            </div>
+
+            {/* Note Section - inside the card */}
+            {!isEditing && hasNote && (
+              <Tooltip text={sessionNote}>
+                <div
+                  className="mt-2 px-2 py-1 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/20 rounded border-l-2 border-amber-400 dark:border-amber-600 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/30 transition-colors truncate"
+                  onClick={(e) => { e.stopPropagation(); handleEditNote(); }}
+                  title="Click to edit"
+                >
+                  {sessionNote}
+                </div>
+              </Tooltip>
+            )}
+
+            {/* Note Editor - inside the card */}
+            {isEditing && (
+              <div className="mt-2 relative">
+                <textarea
+                  autoFocus
+                  value={sessionNote}
+                  onChange={handleUpdateNote}
+                  onKeyDown={handleKeyDown}
+                  onBlur={handleSaveNote}
+                  placeholder="Add a note..."
+                  className="w-full text-xs p-1.5 pr-6 border border-amber-300 dark:border-amber-700 rounded bg-amber-50 dark:bg-amber-950/30 text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-amber-400 dark:focus:ring-amber-600"
+                  rows={2}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleSaveNote(); }}
+                  className="absolute top-1 right-1 p-0.5 hover:bg-amber-200 dark:hover:bg-amber-800 rounded text-amber-600 dark:text-amber-400"
+                  title="Done (Enter)"
+                  type="button"
+                >
+                  <Check size={10} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
