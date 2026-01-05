@@ -812,9 +812,7 @@ class TestRebuildOpenAIResponse:
                         {
                             "index": 0,
                             "delta": {
-                                "tool_calls": [
-                                    {"index": 0, "function": {"arguments": '{"loc'}}
-                                ]
+                                "tool_calls": [{"index": 0, "function": {"arguments": '{"loc'}}]
                             },
                         }
                     ],
@@ -836,9 +834,7 @@ class TestRebuildOpenAIResponse:
             },
             {
                 "content": {
-                    "choices": [
-                        {"index": 0, "delta": {}, "finish_reason": "tool_calls"}
-                    ],
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
                 },
             },
         ]
@@ -898,9 +894,7 @@ class TestRebuildOpenAIResponse:
 class TestStreamMergerIntegration:
     """Integration tests for the full merge workflow with new output format."""
 
-    def test_merge_anthropic_streaming_outputs_request_response_lines(
-        self, tmp_path: Path
-    ) -> None:
+    def test_merge_anthropic_streaming_outputs_request_response_lines(self, tmp_path: Path) -> None:
         """Test that merge outputs separate request and response lines."""
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"
@@ -1004,9 +998,7 @@ class TestStreamMergerIntegration:
         assert response_line["body"]["content"][0]["text"] == "Hello World!"
         assert response_line["body"]["stop_reason"] == "end_turn"
 
-    def test_merge_openai_streaming_outputs_request_response_lines(
-        self, tmp_path: Path
-    ) -> None:
+    def test_merge_openai_streaming_outputs_request_response_lines(self, tmp_path: Path) -> None:
         """Test that merge outputs separate request and response lines for OpenAI."""
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"
@@ -1083,9 +1075,7 @@ class TestStreamMergerIntegration:
         assert response_line["body"]["choices"][0]["message"]["content"] == "Hello from GPT!"
         assert response_line["body"]["choices"][0]["finish_reason"] == "stop"
 
-    def test_merge_non_streaming_preserves_original_response(
-        self, tmp_path: Path
-    ) -> None:
+    def test_merge_non_streaming_preserves_original_response(self, tmp_path: Path) -> None:
         """Test that non-streaming responses are preserved as-is."""
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"
@@ -1238,9 +1228,7 @@ class TestStreamMergerIntegration:
         assert line3["type"] == "response"
         assert line3["request_id"] == "non_stream_req"
 
-    def test_merge_incomplete_request_outputs_only_request(
-        self, tmp_path: Path
-    ) -> None:
+    def test_merge_incomplete_request_outputs_only_request(self, tmp_path: Path) -> None:
         """Test that incomplete requests only output the request line."""
         input_file = tmp_path / "input.jsonl"
         output_file = tmp_path / "output.jsonl"

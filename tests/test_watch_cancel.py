@@ -24,9 +24,10 @@ def test_cancel_recording_transitions_to_idle(tmp_path) -> None:
         assert '"_meta_type":"session_cancelled"' in log_text
 
         # Ensure the log is valid JSONL (at least for the cancel marker line)
-        cancel_lines = [ln for ln in log_text.splitlines() if '"_meta_type":"session_cancelled"' in ln]
+        cancel_lines = [
+            ln for ln in log_text.splitlines() if '"_meta_type":"session_cancelled"' in ln
+        ]
         assert len(cancel_lines) == 1
         json.loads(cancel_lines[0])
     finally:
         mgr.shutdown()
-

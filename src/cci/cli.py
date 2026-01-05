@@ -248,7 +248,7 @@ def _show_cert_help() -> None:
     console.print("[bold]Linux:[/]")
     console.print("  # Ubuntu/Debian:")
     console.print(
-        f"  sudo cp {cert_info['cert_path']} " "/usr/local/share/ca-certificates/mitmproxy.crt"
+        f"  sudo cp {cert_info['cert_path']} /usr/local/share/ca-certificates/mitmproxy.crt"
     )
     console.print("  sudo update-ca-certificates")
     console.print()
@@ -562,7 +562,7 @@ def _display_watch_banner(
     console.print()
     console.print(
         Panel.fit(
-            "[bold cyan]LLI Watch Mode[/]\n" "[dim]Continuous Capture Interface[/]",
+            "[bold cyan]LLI Watch Mode[/]\n[dim]Continuous Capture Interface[/]",
             border_style="cyan",
         )
     )

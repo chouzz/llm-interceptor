@@ -483,7 +483,9 @@ class WatchManager:
                 from cci.merger import merge_streams
 
                 try:
-                    merge_stats = merge_streams(raw_path, merged_path, session_id=session.session_id)
+                    merge_stats = merge_streams(
+                        raw_path, merged_path, session_id=session.session_id
+                    )
                     self._logger.info(
                         "Merged %d requests (%d streaming, %d non-streaming)",
                         merge_stats["total_requests"],
