@@ -23,6 +23,11 @@ This UI is bundled with the `llm-interceptor` Python package.
     lli watch --include "*example.com*"
     ```
 
+    To expose the UI on your network:
+    ```bash
+    lli watch --ui-host 0.0.0.0 --ui-port 8000
+    ```
+
 2.  **Open the Dashboard**:
     The CLI will print a URL (usually `http://localhost:8000`). Click it to open the dashboard.
 

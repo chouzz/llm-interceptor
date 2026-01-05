@@ -400,6 +400,19 @@ def stats(file: str) -> None:
     default=True,
     help="Launch the web UI (default: True)",
 )
+@click.option(
+    "--ui-host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host interface for the web UI (use 0.0.0.0 to expose on the network)",
+)
+@click.option(
+    "--ui-port",
+    default=8000,
+    show_default=True,
+    type=int,
+    help="Port for the web UI",
+)
 @click.pass_context
 def watch(
     ctx: click.Context,
@@ -408,6 +421,8 @@ def watch(
     include: tuple[str, ...],
     debug: bool,
     ui: bool,
+    ui_host: str,
+    ui_port: int,
 ) -> None:
     """
     Start watch mode for continuous session capture.
@@ -475,9 +490,6 @@ def watch(
     if ui:
         from cci.server import run_server
 
-        ui_host = "127.0.0.1"
-        ui_port = 8000  # TODO: Make configurable
-
         if _is_port_in_use(ui_host, ui_port):
             ui_url = f"http://{ui_host}:{ui_port}"
             console.print(
@@ -493,7 +505,7 @@ def watch(
             server_thread = threading.Thread(
                 target=run_server,
                 args=(watch_manager,),
-                kwargs={"port": ui_port},
+                kwargs={"host": ui_host, "port": ui_port},
                 daemon=True,
             )
             server_thread.start()
