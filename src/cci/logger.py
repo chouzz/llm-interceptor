@@ -67,6 +67,7 @@ def setup_logger(
         console=console,
         show_time=True,
         show_path=False,
+        show_level=False,
         rich_tracebacks=True,
         tracebacks_show_locals=level.upper() == "DEBUG",
         markup=True,
@@ -115,9 +116,16 @@ def log_request_summary(
     url: str,
     status: int | None = None,
     latency_ms: float | None = None,
+    captured: bool = True,
 ) -> None:
     """Log a formatted request summary."""
     logger = get_logger()
+
+    # Capture status indicator
+    if captured:
+        cap_str = "[bold green][CAPT][/bold green]"
+    else:
+        cap_str = "[bold magenta][SKIP][/bold magenta]"
 
     # Color coding based on status
     if status is None:
@@ -131,7 +139,7 @@ def log_request_summary(
 
     latency_str = f" ({latency_ms:.0f}ms)" if latency_ms else ""
 
-    logger.info(f"{method} {url} {status_str}{latency_str}")
+    logger.info(f"{cap_str} {method} {url} {status_str}{latency_str}")
 
 
 def log_streaming_progress(request_id: str, chunk_count: int) -> None:
