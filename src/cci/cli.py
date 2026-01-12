@@ -637,6 +637,12 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
     """Run the main watch mode interaction loop."""
     from cci.watch import WatchState
 
+    def _recording_status_text(session_id: str) -> str:
+        return (
+            f"[bold red]◉[/] [red][REC][/] Session [bold]{session_id}[/] recording  "
+            f"[dim]Press [Enter] to STOP & PROCESS, [Esc] to CANCEL[/]"
+        )
+
     while not stop_event.is_set():
         state = watch_manager.state
 
@@ -661,13 +667,17 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
                 session = watch_manager.start_recording()
                 session_id = session.session_id
 
-                # Display RECORDING status with spinner pinned at bottom
-                rec_status_text = (
-                    f"[bold red]◉[/] [red][REC][/] Session [bold]{session_id}[/] recording  "
-                    f"[dim]Press [Enter] to STOP & PROCESS, [Esc] to CANCEL[/]"
+                console.print(
+                    f"\n[bold green]▶[/] [green][START][/] Session [bold]{session_id}[/] "
+                    f"recording (requests: {session.request_count})"
                 )
 
-                with console.status(rec_status_text, spinner="point", spinner_style="red"):
+                # Display RECORDING status once to avoid spinner refresh noise
+                with console.status(
+                    _recording_status_text(session_id),
+                    spinner="point",
+                    spinner_style="red",
+                ):
                     try:
                         key = _wait_for_enter_or_escape()
                     except EOFError:
@@ -677,10 +687,11 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
                     break
 
                 if key == "escape":
-                    watch_manager.cancel_recording()
+                    cancelled = watch_manager.cancel_recording()
                     console.print(
                         f"\n[bold yellow]✖[/] [yellow][CANCEL][/]"
-                        f" Session [bold]{session_id}[/] cancelled (no output generated)."
+                        f" Session [bold]{session_id}[/] cancelled "
+                        f"(requests: {cancelled.request_count})."
                     )
                     console.print()
                 else:
@@ -688,7 +699,8 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
                     session = watch_manager.stop_recording()
                     console.print(
                         f"\n[bold yellow]⏳[/] [yellow][BUSY][/] Processing "
-                        f"Session [bold]{session_id}[/]..."
+                        f"Session [bold]{session_id}[/] "
+                        f"(requests: {session.request_count})..."
                     )
 
                     # Process the session
@@ -705,12 +717,11 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
             session_id = (
                 watch_manager.current_session.session_id if watch_manager.current_session else "?"
             )
-            rec_status_text = (
-                f"[bold red]◉[/] [red][REC][/] Session [bold]{session_id}[/] recording  "
-                f"[dim]Press [Enter] to STOP & PROCESS, [Esc] to CANCEL[/]"
-            )
-
-            with console.status(rec_status_text, spinner="point", spinner_style="red"):
+            with console.status(
+                _recording_status_text(session_id),
+                spinner="point",
+                spinner_style="red",
+            ):
                 try:
                     key = _wait_for_enter_or_escape()
                 except EOFError:
@@ -724,7 +735,8 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
                     cancelled = watch_manager.cancel_recording()
                     console.print(
                         f"\n[bold yellow]✖[/] [yellow][CANCEL][/]"
-                        f" Session [bold]{cancelled.session_id}[/] cancelled (no output generated)."
+                        f" Session [bold]{cancelled.session_id}[/] cancelled "
+                        f"(requests: {cancelled.request_count})."
                     )
                     console.print()
                 else:
@@ -733,7 +745,8 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
                     session_id = session.session_id
                     console.print(
                         f"\n[bold yellow]⏳[/] [yellow][BUSY][/] Processing "
-                        f"Session [bold]{session_id}[/]..."
+                        f"Session [bold]{session_id}[/] "
+                        f"(requests: {session.request_count})..."
                     )
 
                     # Process the session
@@ -750,28 +763,46 @@ def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) ->
             time.sleep(0.1)
 
 
-def _wait_for_enter_or_escape() -> Literal["enter", "escape"]:
+def _wait_for_enter_or_escape(
+    timeout: float | None = None,
+) -> Literal["enter", "escape"] | None:
     """
     Wait for a single keypress: Enter or Escape.
 
     Falls back to line-buffered input when stdin is not a TTY (e.g. piped).
     """
     if not sys.stdin.isatty():
-        input()
-        return "enter"
+        if timeout is None:
+            input()
+            return "enter"
+        return None
 
     if sys.platform.startswith("win"):
         # Windows: use msvcrt for unbuffered key input
         import msvcrt
+        import time
 
-        while True:
-            ch = msvcrt.getwch()
-            if ch in ("\r", "\n"):
-                return "enter"
-            if ch == "\x1b":
-                return "escape"
+        if timeout is None:
+            while True:
+                ch = msvcrt.getwch()
+                if ch in ("\r", "\n"):
+                    return "enter"
+                if ch == "\x1b":
+                    return "escape"
+        else:
+            end_time = time.time() + timeout
+            while time.time() < end_time:
+                if msvcrt.kbhit():
+                    ch = msvcrt.getwch()
+                    if ch in ("\r", "\n"):
+                        return "enter"
+                    if ch == "\x1b":
+                        return "escape"
+                time.sleep(0.01)
+            return None
     else:
         # POSIX: temporarily switch terminal to raw mode
+        import select
         import termios
         import tty
 
@@ -779,7 +810,19 @@ def _wait_for_enter_or_escape() -> Literal["enter", "escape"]:
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
-            while True:
+            if timeout is None:
+                while True:
+                    rlist, _, _ = select.select([fd], [], [])
+                    if rlist:
+                        ch = sys.stdin.read(1)
+                        if ch in ("\r", "\n"):
+                            return "enter"
+                        if ch == "\x1b":
+                            return "escape"
+            else:
+                rlist, _, _ = select.select([fd], [], [], timeout)
+                if not rlist:
+                    return None
                 ch = sys.stdin.read(1)
                 if ch in ("\r", "\n"):
                     return "enter"
@@ -787,6 +830,8 @@ def _wait_for_enter_or_escape() -> Literal["enter", "escape"]:
                     return "escape"
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    return None
 
 
 def _is_port_in_use(host: str, port: int) -> bool:
