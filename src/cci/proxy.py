@@ -64,18 +64,25 @@ class WatchAddon:
     def request(self, flow: http.HTTPFlow) -> None:
         """Handle an outgoing request."""
         url = flow.request.pretty_url
+        method = flow.request.method
 
-        self._logger.debug("Intercepted request: %s %s", flow.request.method, url)
+        self._logger.debug("Intercepted request: %s %s", method, url)
 
-        if not self.url_filter.should_capture(url):
-            self._logger.debug("URL not matched, skipping: %s", url)
-            return
+        # Determine if we should capture this request
+        should_capture = self.url_filter.should_capture(url)
 
-        # Generate unique request ID
+        # Log summary for all requests
+        log_request_summary(method, url, captured=should_capture)
+
+        # Generate unique request ID and track timing for all requests
         request_id = str(uuid4())
         flow_id = id(flow)
         self._request_ids[flow_id] = request_id
         self._request_times[flow_id] = time.time()
+
+        if not should_capture:
+            self._logger.debug("URL not matched, skipping: %s", url)
+            return
 
         # Capture current session ID for this request
         session_id = self.watch_manager.current_session_id
@@ -96,7 +103,7 @@ class WatchAddon:
             "type": "request",
             "id": request_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "method": flow.request.method,
+            "method": method,
             "url": url,
             "headers": headers,
             "body": body,
@@ -108,13 +115,30 @@ class WatchAddon:
     def response(self, flow: http.HTTPFlow) -> None:
         """Handle a response."""
         url = flow.request.pretty_url
-        if not self.url_filter.should_capture(url):
-            return
+        method = flow.request.method
+        status_code = flow.response.status_code
+
+        # Determine if we should capture this response
+        should_capture = self.url_filter.should_capture(url)
 
         flow_id = id(flow)
         request_id = self._request_ids.get(flow_id, str(uuid4()))
         start_time = self._request_times.get(flow_id, time.time())
         latency_ms = (time.time() - start_time) * 1000
+
+        # Log summary for all responses
+        log_request_summary(
+            method,
+            url,
+            status_code,
+            latency_ms,
+            captured=should_capture,
+        )
+
+        if not should_capture:
+            # Cleanup and exit early if not capturing
+            self._cleanup_flow(flow_id)
+            return
 
         # Use the session ID from the request start
         session_id = self._request_sessions.get(flow_id)
@@ -125,7 +149,7 @@ class WatchAddon:
 
         self._logger.debug(
             "Response received: %s %s (streaming=%s, content-type=%s)",
-            flow.response.status_code,
+            status_code,
             url,
             is_streaming,
             content_type,
@@ -141,7 +165,7 @@ class WatchAddon:
                     "type": "response_chunk",
                     "request_id": request_id,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "status_code": flow.response.status_code,
+                    "status_code": status_code,
                     "chunk_index": chunk_index,
                     "content": event_content,
                 }
@@ -153,7 +177,7 @@ class WatchAddon:
                 "type": "response_meta",
                 "request_id": request_id,
                 "total_latency_ms": latency_ms,
-                "status_code": flow.response.status_code,
+                "status_code": status_code,
                 "total_chunks": len(sse_events),
             }
             self.watch_manager.write_record(meta_record, session_id=session_id)
@@ -168,19 +192,12 @@ class WatchAddon:
                 "type": "response",
                 "request_id": request_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "status_code": flow.response.status_code,
+                "status_code": status_code,
                 "headers": headers,
                 "body": body,
                 "latency_ms": latency_ms,
             }
             self.watch_manager.write_record(record, session_id=session_id)
-
-        log_request_summary(
-            flow.request.method,
-            url,
-            flow.response.status_code,
-            latency_ms,
-        )
 
         # Cleanup
         self._cleanup_flow(flow_id)
