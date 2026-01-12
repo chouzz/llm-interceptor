@@ -61,7 +61,7 @@ class ProxyConfig(BaseModel):
     """Proxy server configuration."""
 
     host: str = "127.0.0.1"
-    port: int = 8080
+    port: int = 9090
     # SSL verification mode
     ssl_insecure: bool = False
 

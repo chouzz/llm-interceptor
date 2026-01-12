@@ -273,31 +273,31 @@ def _show_proxy_help() -> None:
     console.print()
 
     console.print("[bold]Environment Variables (Shell):[/]")
-    console.print("  export HTTP_PROXY=http://127.0.0.1:8080")
-    console.print("  export HTTPS_PROXY=http://127.0.0.1:8080")
+    console.print("  export HTTP_PROXY=http://127.0.0.1:9090")
+    console.print("  export HTTPS_PROXY=http://127.0.0.1:9090")
     console.print()
 
     console.print("[bold]Claude Code:[/]")
     console.print("  # Set in your shell before running claude:")
-    console.print("  export HTTP_PROXY=http://127.0.0.1:8080")
-    console.print("  export HTTPS_PROXY=http://127.0.0.1:8080")
+    console.print("  export HTTP_PROXY=http://127.0.0.1:9090")
+    console.print("  export HTTPS_PROXY=http://127.0.0.1:9090")
     console.print("  claude")
     console.print()
 
     console.print("[bold]Cursor IDE:[/]")
     console.print("  # Add to your shell profile (.bashrc, .zshrc):")
-    console.print("  export HTTP_PROXY=http://127.0.0.1:8080")
-    console.print("  export HTTPS_PROXY=http://127.0.0.1:8080")
+    console.print("  export HTTP_PROXY=http://127.0.0.1:9090")
+    console.print("  export HTTPS_PROXY=http://127.0.0.1:9090")
     console.print("  # Then restart Cursor from that terminal")
     console.print()
 
     console.print("[bold]curl:[/]")
-    console.print("  curl -x http://127.0.0.1:8080 https://api.anthropic.com/v1/messages ...")
+    console.print("  curl -x http://127.0.0.1:9090 https://api.anthropic.com/v1/messages ...")
     console.print()
 
     console.print("[bold]Python requests:[/]")
     console.print("  import requests")
-    console.print('  proxies = {"http": "http://127.0.0.1:8080", "https": "http://127.0.0.1:8080"}')
+    console.print('  proxies = {"http": "http://127.0.0.1:9090", "https": "http://127.0.0.1:9090"}')
     console.print("  requests.post(url, proxies=proxies, verify=False)")
 
 
@@ -373,6 +373,7 @@ def stats(file: str) -> None:
     "-p",
     type=int,
     default=9090,
+    show_default=True,
     help="Proxy server port (default: 9090)",
 )
 @click.option(
@@ -444,7 +445,7 @@ def watch(
 
         lli watch --include "*my-custom-api.com*"
 
-    Configure your target application to use this proxy:
+    Configure your target application to use this proxy (replace the port as needed):
 
         export HTTP_PROXY=http://127.0.0.1:9090
 
@@ -457,8 +458,12 @@ def watch(
     # Load configuration
     config = load_config(ctx.obj.get("config_path"))
 
-    # Apply CLI overrides
-    config.proxy.port = port
+    # Apply CLI overrides only when explicitly provided
+    port_source = ctx.get_parameter_source("port")
+    if port_source == click.core.ParameterSource.DEFAULT:
+        port = config.proxy.port
+    else:
+        config.proxy.port = port
 
     # Add custom glob patterns (user-provided via CLI)
     for pattern in include:
