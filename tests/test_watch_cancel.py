@@ -9,12 +9,15 @@ def test_cancel_recording_transitions_to_idle(tmp_path) -> None:
     try:
         session = mgr.start_recording()
         assert mgr.state == WatchState.RECORDING
+        assert session.request_count == 0
 
         # Write at least one record during the session
         mgr.write_record({"type": "request", "id": "req_1"})
+        assert session.request_count == 1
 
         cancelled = mgr.cancel_recording()
         assert cancelled.session_id == session.session_id
+        assert cancelled.request_count == 1
         assert mgr.state == WatchState.IDLE
         assert mgr.current_session is None
         assert mgr.next_session_id == 2

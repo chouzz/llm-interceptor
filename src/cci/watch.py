@@ -42,6 +42,7 @@ class SessionContext:
     start_offset: int = 0
     end_offset: int = 0
     end_time: datetime | None = None
+    request_count: int = 0
 
     @property
     def directory_name(self) -> str:
@@ -284,6 +285,17 @@ class WatchManager:
         # Inject session ID: use provided one, or current one, or None
         if session_id is None:
             session_id = self.current_session_id
+
+        # Maintain per-session request count (for watch-mode status output).
+        # Only count actual request records for the currently active recording session.
+        if record.get("type") == "request":
+            with self._state_lock:
+                if (
+                    self._state == WatchState.RECORDING
+                    and self._current_session is not None
+                    and session_id == self._current_session.session_id
+                ):
+                    self._current_session.request_count += 1
 
         record_with_session = {"_session_id": session_id, **record}
 
