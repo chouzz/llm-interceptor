@@ -20,6 +20,7 @@ from rich.table import Table
 
 from cci import __version__
 from cci.config import get_cert_info, get_default_trace_dir, load_config
+from cci.net import detect_primary_ipv4, reachable_host_for_listen_host
 
 if TYPE_CHECKING:
     from cci.config import CCIConfig
@@ -299,6 +300,10 @@ def _show_proxy_help() -> None:
     console.print("  import requests")
     console.print('  proxies = {"http": "http://127.0.0.1:9090", "https": "http://127.0.0.1:9090"}')
     console.print("  requests.post(url, proxies=proxies, verify=False)")
+    console.print()
+    console.print("[bold]LAN capture (listen on all interfaces):[/]")
+    console.print("  lli watch --lan")
+    console.print("  # It will print the detected LAN IP + port for you.")
 
 
 def _show_config(config_path: str | None) -> None:
@@ -377,6 +382,11 @@ def stats(file: str) -> None:
     help="Proxy server port (default: 9090)",
 )
 @click.option(
+    "--lan",
+    is_flag=True,
+    help="Listen on the LAN (bind proxy to 0.0.0.0) and print a reachable LAN IP.",
+)
+@click.option(
     "--output-dir",
     "--log-dir",
     "-o",
@@ -418,6 +428,7 @@ def stats(file: str) -> None:
 def watch(
     ctx: click.Context,
     port: int,
+    lan: bool,
     output_dir: str,
     include: tuple[str, ...],
     debug: bool,
@@ -465,6 +476,14 @@ def watch(
     else:
         config.proxy.port = port
 
+    # Apply proxy host rules:
+    # - With --lan: bind to all interfaces (0.0.0.0) and show LAN IP in help text.
+    # - Without --lan: always default to loopback (127.0.0.1) as requested.
+    if lan:
+        config.proxy.host = "0.0.0.0"
+    else:
+        config.proxy.host = "127.0.0.1"
+
     # Add custom glob patterns (user-provided via CLI)
     for pattern in include:
         config.filter.include_globs.append(pattern)
@@ -496,7 +515,7 @@ def watch(
         from cci.server import run_server
 
         if _is_port_in_use(ui_host, ui_port):
-            ui_url = f"http://{ui_host}:{ui_port}"
+            ui_url = f"http://{reachable_host_for_listen_host(ui_host)}:{ui_port}"
             console.print(
                 Panel(
                     f"Port {ui_port} is already in use.\n"
@@ -515,7 +534,7 @@ def watch(
             )
             server_thread.start()
 
-            ui_url = f"http://{ui_host}:{ui_port}"
+            ui_url = f"http://{reachable_host_for_listen_host(ui_host)}:{ui_port}"
             console.print(
                 Panel(
                     f"Analyze sessions at: [bold link={ui_url}]{ui_url}[/]",
@@ -525,7 +544,13 @@ def watch(
             )
 
     # Display startup info
-    _display_watch_banner(port, output_dir, watch_manager.global_log_path, config)
+    _display_watch_banner(
+        port,
+        output_dir,
+        watch_manager.global_log_path,
+        config,
+        lan=lan,
+    )
 
     # Initialize watch manager
     watch_manager.initialize()
@@ -574,6 +599,7 @@ def _display_watch_banner(
     output_dir: str,
     global_log_path: Path,
     config: CCIConfig,
+    lan: bool = False,
 ) -> None:
     """Display the watch mode startup banner."""
     console.print()
@@ -593,8 +619,13 @@ def _display_watch_banner(
     _display_filter_rules(config)
 
     console.print("[dim]Configure your application:[/]")
-    console.print(f"  export HTTP_PROXY=http://127.0.0.1:{port}")
-    console.print(f"  export HTTPS_PROXY=http://127.0.0.1:{port}")
+    if lan:
+        detected = detect_primary_ipv4() or "<your_lan_ip>"
+        console.print(f"  export HTTP_PROXY=http://{detected}:{port}")
+        console.print(f"  export HTTPS_PROXY=http://{detected}:{port}")
+    else:
+        console.print(f"  export HTTP_PROXY=http://127.0.0.1:{port}")
+        console.print(f"  export HTTPS_PROXY=http://127.0.0.1:{port}")
     console.print("  export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem")
     console.print()
 
