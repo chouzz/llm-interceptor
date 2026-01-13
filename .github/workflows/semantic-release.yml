@@ -1,0 +1,30 @@
+name: Semantic Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install python-semantic-release
+        run: pip install python-semantic-release
+
+      - name: Release version
+        run: semantic-release version
+
+      - name: Publish release
+        run: semantic-release publish
