@@ -12,11 +12,6 @@ import ipaddress
 import socket
 
 
-def is_wildcard_host(host: str) -> bool:
-    """Return True if host is a wildcard bind address (IPv4/IPv6)."""
-    return host in {"0.0.0.0", "::", "[::]"}
-
-
 def _is_publicly_unhelpful(ip: str) -> bool:
     """Return True if the ip is loopback/unspecified/link-local."""
     try:
@@ -65,20 +60,14 @@ def detect_primary_ipv4() -> str | None:
     return None
 
 
-def get_advertise_host(listen_host: str, explicit_advertise_host: str | None = None) -> str:
+def reachable_host_for_listen_host(listen_host: str) -> str:
     """
-    Return the best host to show users for connecting to a service.
+    Return a "reachable" host string to show users.
 
-    - If explicit_advertise_host is provided, it wins.
-    - If listen_host is wildcard, attempt to detect a LAN IP.
+    - When listening on 0.0.0.0 (all interfaces), return the detected LAN IPv4.
     - Otherwise return listen_host as-is.
     """
-    if explicit_advertise_host:
-        return explicit_advertise_host
-
-    if is_wildcard_host(listen_host):
-        detected = detect_primary_ipv4()
-        return detected or "127.0.0.1"
-
+    if listen_host == "0.0.0.0":
+        return detect_primary_ipv4() or "127.0.0.1"
     return listen_host
 

@@ -20,7 +20,7 @@ from rich.table import Table
 
 from cci import __version__
 from cci.config import get_cert_info, get_default_trace_dir, load_config
-from cci.net import get_advertise_host, is_wildcard_host
+from cci.net import detect_primary_ipv4, reachable_host_for_listen_host
 
 if TYPE_CHECKING:
     from cci.config import CCIConfig
@@ -274,33 +274,31 @@ def _show_proxy_help() -> None:
     console.print()
 
     console.print("[bold]Environment Variables (Shell):[/]")
-    console.print("  export HTTP_PROXY=http://<proxy_host>:<proxy_port>")
-    console.print("  export HTTPS_PROXY=http://<proxy_host>:<proxy_port>")
+    console.print("  export HTTP_PROXY=http://127.0.0.1:9090")
+    console.print("  export HTTPS_PROXY=http://127.0.0.1:9090")
     console.print()
 
     console.print("[bold]Claude Code:[/]")
     console.print("  # Set in your shell before running claude:")
-    console.print("  export HTTP_PROXY=http://<proxy_host>:<proxy_port>")
-    console.print("  export HTTPS_PROXY=http://<proxy_host>:<proxy_port>")
+    console.print("  export HTTP_PROXY=http://127.0.0.1:9090")
+    console.print("  export HTTPS_PROXY=http://127.0.0.1:9090")
     console.print("  claude")
     console.print()
 
     console.print("[bold]Cursor IDE:[/]")
     console.print("  # Add to your shell profile (.bashrc, .zshrc):")
-    console.print("  export HTTP_PROXY=http://<proxy_host>:<proxy_port>")
-    console.print("  export HTTPS_PROXY=http://<proxy_host>:<proxy_port>")
+    console.print("  export HTTP_PROXY=http://127.0.0.1:9090")
+    console.print("  export HTTPS_PROXY=http://127.0.0.1:9090")
     console.print("  # Then restart Cursor from that terminal")
     console.print()
 
     console.print("[bold]curl:[/]")
-    console.print("  curl -x http://<proxy_host>:<proxy_port> https://api.anthropic.com/v1/messages ...")
+    console.print("  curl -x http://127.0.0.1:9090 https://api.anthropic.com/v1/messages ...")
     console.print()
 
     console.print("[bold]Python requests:[/]")
     console.print("  import requests")
-    console.print(
-        '  proxies = {"http": "http://<proxy_host>:<proxy_port>", "https": "http://<proxy_host>:<proxy_port>"}'
-    )
+    console.print('  proxies = {"http": "http://127.0.0.1:9090", "https": "http://127.0.0.1:9090"}')
     console.print("  requests.post(url, proxies=proxies, verify=False)")
     console.print()
     console.print("[bold]LAN capture (listen on all interfaces):[/]")
@@ -384,19 +382,9 @@ def stats(file: str) -> None:
     help="Proxy server port (default: 9090)",
 )
 @click.option(
-    "--proxy-host",
-    default=None,
-    help="Host interface for the proxy (e.g. 127.0.0.1, 0.0.0.0). Overrides config/env.",
-)
-@click.option(
     "--lan",
     is_flag=True,
-    help="Listen on the LAN (bind proxy to 0.0.0.0) and print a reachable LAN IP like FastAPI.",
-)
-@click.option(
-    "--advertise-host",
-    default=None,
-    help="Override the host printed in export/curl instructions (useful if auto-detection is wrong).",
+    help="Listen on the LAN (bind proxy to 0.0.0.0) and print a reachable LAN IP.",
 )
 @click.option(
     "--output-dir",
@@ -440,9 +428,7 @@ def stats(file: str) -> None:
 def watch(
     ctx: click.Context,
     port: int,
-    proxy_host: str | None,
     lan: bool,
-    advertise_host: str | None,
     output_dir: str,
     include: tuple[str, ...],
     debug: bool,
@@ -472,9 +458,9 @@ def watch(
 
     Configure your target application to use this proxy (replace the port as needed):
 
-        export HTTP_PROXY=http://<proxy_host>:9090
+        export HTTP_PROXY=http://127.0.0.1:9090
 
-        export HTTPS_PROXY=http://<proxy_host>:9090
+        export HTTPS_PROXY=http://127.0.0.1:9090
 
         export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem
     """
@@ -490,13 +476,13 @@ def watch(
     else:
         config.proxy.port = port
 
-    # Apply proxy host overrides (CLI > config/env)
+    # Apply proxy host rules:
+    # - With --lan: bind to all interfaces (0.0.0.0) and show LAN IP in help text.
+    # - Without --lan: always default to loopback (127.0.0.1) as requested.
     if lan:
         config.proxy.host = "0.0.0.0"
     else:
-        host_source = ctx.get_parameter_source("proxy_host")
-        if host_source != click.core.ParameterSource.DEFAULT and proxy_host is not None:
-            config.proxy.host = proxy_host
+        config.proxy.host = "127.0.0.1"
 
     # Add custom glob patterns (user-provided via CLI)
     for pattern in include:
@@ -529,8 +515,7 @@ def watch(
         from cci.server import run_server
 
         if _is_port_in_use(ui_host, ui_port):
-            ui_advertise_host = get_advertise_host(ui_host)
-            ui_url = f"http://{ui_advertise_host}:{ui_port}"
+            ui_url = f"http://{reachable_host_for_listen_host(ui_host)}:{ui_port}"
             console.print(
                 Panel(
                     f"Port {ui_port} is already in use.\n"
@@ -549,8 +534,7 @@ def watch(
             )
             server_thread.start()
 
-            ui_advertise_host = get_advertise_host(ui_host)
-            ui_url = f"http://{ui_advertise_host}:{ui_port}"
+            ui_url = f"http://{reachable_host_for_listen_host(ui_host)}:{ui_port}"
             console.print(
                 Panel(
                     f"Analyze sessions at: [bold link={ui_url}]{ui_url}[/]",
@@ -565,7 +549,6 @@ def watch(
         output_dir,
         watch_manager.global_log_path,
         config,
-        advertise_host=advertise_host,
         lan=lan,
     )
 
@@ -616,7 +599,6 @@ def _display_watch_banner(
     output_dir: str,
     global_log_path: Path,
     config: CCIConfig,
-    advertise_host: str | None = None,
     lan: bool = False,
 ) -> None:
     """Display the watch mode startup banner."""
@@ -636,19 +618,14 @@ def _display_watch_banner(
     # Display filter rules
     _display_filter_rules(config)
 
-    listen_host = config.proxy.host
-    shown_host = get_advertise_host(listen_host, explicit_advertise_host=advertise_host)
-
-    if lan or is_wildcard_host(listen_host):
-        console.print(
-            "[yellow]⚠ LAN mode enabled:[/] the proxy listens on all interfaces "
-            f"([bold]{listen_host}[/]) and can be used by other machines on your network."
-        )
-        console.print()
-
     console.print("[dim]Configure your application:[/]")
-    console.print(f"  export HTTP_PROXY=http://{shown_host}:{port}")
-    console.print(f"  export HTTPS_PROXY=http://{shown_host}:{port}")
+    if lan:
+        detected = detect_primary_ipv4() or "<your_lan_ip>"
+        console.print(f"  export HTTP_PROXY=http://{detected}:{port}")
+        console.print(f"  export HTTPS_PROXY=http://{detected}:{port}")
+    else:
+        console.print(f"  export HTTP_PROXY=http://127.0.0.1:{port}")
+        console.print(f"  export HTTPS_PROXY=http://127.0.0.1:{port}")
     console.print("  export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem")
     console.print()
 
