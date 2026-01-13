@@ -32,7 +32,7 @@ class TestConfig:
         """Test default configuration values."""
         config = CCIConfig()
         assert config.proxy.host == "127.0.0.1"
-        assert config.proxy.port == 8080
+        assert config.proxy.port == 9090
         assert config.masking.mask_auth_headers is True
 
     def test_filter_config_defaults(self) -> None:
