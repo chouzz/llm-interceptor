@@ -148,6 +148,15 @@ def log_streaming_progress(request_id: str, chunk_count: int) -> None:
     logger.debug("Request %s... received chunk #%d", request_id[:8], chunk_count)
 
 
+def log_tls_handshake_failure(target: str, error: str | None = None) -> None:
+    """Log TLS handshake failures with target context."""
+    logger = get_logger()
+    message = f"[bold red][TLS][/bold red] {target}"
+    if error:
+        message = f"{message} - {error}"
+    logger.warning(message)
+
+
 def log_error(message: str, exc: Exception | None = None) -> None:
     """Log an error with optional exception details."""
     logger = get_logger()
