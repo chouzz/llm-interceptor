@@ -17,12 +17,18 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from mitmproxy import http
+from mitmproxy.tls import TlsData
 from mitmproxy.options import Options
 from mitmproxy.tools.dump import DumpMaster
 
 from cci.config import CCIConfig
 from cci.filters import URLFilter
-from cci.logger import get_logger, log_request_summary, log_streaming_progress
+from cci.logger import (
+    get_logger,
+    log_request_summary,
+    log_streaming_progress,
+    log_tls_handshake_failure,
+)
 
 if TYPE_CHECKING:
     from cci.watch import WatchManager
@@ -211,6 +217,20 @@ class WatchAddon:
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
             self._logger.debug("Detected streaming response for %s", url)
+
+    def tls_failed_server(self, data: TlsData) -> None:
+        """Log TLS handshake failures with server context."""
+        server = data.conn
+        address = getattr(server, "address", None)
+        host = getattr(server, "sni", None) or (address[0] if address else None)
+        port = address[1] if address else None
+        if host and port:
+            target = f"https://{host}:{port}"
+        elif host:
+            target = host
+        else:
+            target = "unknown"
+        log_tls_handshake_failure(target, getattr(server, "error", None))
 
     def _parse_sse_body(self, content: bytes | None) -> list[Any]:
         """Parse a complete SSE response body into individual events."""
