@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from mitmproxy import http
-from mitmproxy.tls import TlsData
 from mitmproxy.options import Options
+from mitmproxy.tls import TlsData
 from mitmproxy.tools.dump import DumpMaster
 
 from cci.config import CCIConfig
