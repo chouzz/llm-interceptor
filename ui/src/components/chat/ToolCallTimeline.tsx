@@ -65,27 +65,28 @@ const buildToolEvents = (messages: NormalizedMessage[], responseContent: unknown
     }
   });
 
-  return entries
-    .map(({ block, source }) => {
-      const type = typeof block.type === 'string' ? block.type : '';
-      if (type === 'tool_use') {
-        const id = getToolUseId(block);
-        const name = typeof block.name === 'string' ? block.name : 'unknown';
-        return { kind: 'call', name, id, source } satisfies ToolEvent;
-      }
-      if (type === 'tool_result') {
-        const id = getToolUseId(block);
-        const name = (id && idToName.get(id)) || 'unknown';
-        const summaryRaw = summarizeResult(block.content);
-        const summary =
-          summaryRaw.length > TOOL_RESULT_PREVIEW_LIMIT
-            ? `${summaryRaw.slice(0, TOOL_RESULT_PREVIEW_LIMIT)}…`
-            : summaryRaw;
-        return { kind: 'result', name, id, source, summary } satisfies ToolEvent;
-      }
-      return null;
-    })
-    .filter((event): event is ToolEvent => event !== null);
+  const events: ToolEvent[] = [];
+  entries.forEach(({ block, source }) => {
+    const type = typeof block.type === 'string' ? block.type : '';
+    if (type === 'tool_use') {
+      const id = getToolUseId(block);
+      const name = typeof block.name === 'string' ? block.name : 'unknown';
+      events.push({ kind: 'call', name, id, source });
+      return;
+    }
+    if (type === 'tool_result') {
+      const id = getToolUseId(block);
+      const name = (id && idToName.get(id)) || 'unknown';
+      const summaryRaw = summarizeResult(block.content);
+      const summary =
+        summaryRaw.length > TOOL_RESULT_PREVIEW_LIMIT
+          ? `${summaryRaw.slice(0, TOOL_RESULT_PREVIEW_LIMIT)}…`
+          : summaryRaw;
+      events.push({ kind: 'result', name, id, source, summary });
+    }
+  });
+
+  return events;
 };
 
 export const ToolCallTimeline: React.FC<{
