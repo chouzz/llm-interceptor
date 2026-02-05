@@ -14,6 +14,7 @@ import {
 import type { NormalizedExchange } from '../../types';
 import { safeJSONStringify } from '../../utils/ui';
 import { ChatBubble } from '../chat/ChatBubble';
+import { ToolCallTimeline } from '../chat/ToolCallTimeline';
 import { CopyButton } from '../common/CopyButton';
 import { JSONViewer } from '../common/JSONViewer';
 import { TokenBadge } from '../common/TokenBadge';
@@ -161,6 +162,14 @@ export const ExchangeDetailsPane: React.FC<{
                     }
                     return <ChatBubble key={i} message={msg} />;
                   })}
+                </div>
+
+                {/* Tool Call Timeline */}
+                <div className="mt-12 pt-8 border-t border-gray-200 dark:border-slate-800">
+                  <ToolCallTimeline
+                    messages={currentExchange.messages}
+                    responseContent={currentExchange.responseContent}
+                  />
                 </div>
 
                 {/* The Response */}
