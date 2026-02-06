@@ -87,6 +87,7 @@ export interface NormalizedExchange {
   usage?: {
     input_tokens: number;
     output_tokens: number;
+    total_tokens: number;
   };
 
   // Original raw data for debugging

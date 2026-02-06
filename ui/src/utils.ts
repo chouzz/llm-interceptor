@@ -79,9 +79,14 @@ const normalizeUsageMetrics = (rawUsage: unknown) => {
     output = Math.max(total - input, 0);
   }
 
+  const inputFinal = input ?? total ?? 0;
+  const outputFinal = output ?? 0;
+  const totalFinal = total ?? (inputFinal + outputFinal);
+
   return {
-    input_tokens: input ?? total ?? 0,
-    output_tokens: output ?? 0,
+    input_tokens: inputFinal,
+    output_tokens: outputFinal,
+    total_tokens: totalFinal,
   };
 };
 
