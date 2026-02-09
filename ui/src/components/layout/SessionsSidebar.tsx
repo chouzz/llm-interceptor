@@ -9,6 +9,7 @@ import {
   Moon,
   Pencil,
   Sun,
+  Trash2,
 } from 'lucide-react';
 import type { AnnotationData, SessionSummary } from '../../types';
 import { formatTimestamp } from '../../utils';
@@ -29,6 +30,7 @@ export const SessionsSidebar: React.FC<{
 
   annotations: Record<string, AnnotationData>;
   onUpdateSessionNote: (sessionId: string, note: string) => void;
+  onDeleteSession: (sessionId: string) => Promise<boolean>;
 }> = ({
   width,
   isCollapsed,
@@ -41,6 +43,7 @@ export const SessionsSidebar: React.FC<{
   onToggleTheme,
   annotations,
   onUpdateSessionNote,
+  onDeleteSession,
 }) => {
   const [editingSessionNote, setEditingSessionNote] = useState<string | null>(null);
 
@@ -70,6 +73,7 @@ export const SessionsSidebar: React.FC<{
           onSetIsCollapsed={setIsCollapsed}
           onSetEditingSessionNote={setEditingSessionNote}
           onUpdateSessionNote={onUpdateSessionNote}
+          onDeleteSession={onDeleteSession}
         />
       );
     });
@@ -82,6 +86,7 @@ export const SessionsSidebar: React.FC<{
     onSelectSession,
     setIsCollapsed,
     onUpdateSessionNote,
+    onDeleteSession,
   ]);
 
   return (
@@ -155,6 +160,7 @@ const SessionItem = React.memo<{
   onSetIsCollapsed: (collapsed: boolean) => void;
   onSetEditingSessionNote: (sessionId: string | null) => void;
   onUpdateSessionNote: (sessionId: string, note: string) => void;
+  onDeleteSession: (sessionId: string) => Promise<boolean>;
 }>(({
   session,
   isCollapsed,
@@ -166,6 +172,7 @@ const SessionItem = React.memo<{
   onSetIsCollapsed,
   onSetEditingSessionNote,
   onUpdateSessionNote,
+  onDeleteSession,
 }) => {
   const handleSelectSession = useCallback(() => {
     onSelectSession(session.id);
@@ -196,6 +203,16 @@ const SessionItem = React.memo<{
   const handleEditNote = useCallback(() => {
     onSetEditingSessionNote(session.id);
   }, [session.id, onSetEditingSessionNote]);
+
+  const handleDeleteSession = useCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const confirmed = window.confirm(`Delete ${session.id}? This will remove local files and cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    await onDeleteSession(session.id);
+  }, [session.id, onDeleteSession]);
 
   return (
     <div>
@@ -235,6 +252,14 @@ const SessionItem = React.memo<{
                 type="button"
               >
                 <Pencil size={12} className="text-slate-500 dark:text-slate-300" />
+              </button>
+              <button
+                onClick={handleDeleteSession}
+                className="p-1.5 bg-white dark:bg-slate-700 rounded shadow-sm hover:scale-110"
+                title="Delete session"
+                type="button"
+              >
+                <Trash2 size={12} className="text-red-500 dark:text-red-400" />
               </button>
             </div>
 
