@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useMemo, memo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, memo } from 'react';
 import {
   Check,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Coins,
   Cpu,
   Filter,
   MessageCircle,
@@ -365,6 +366,9 @@ const RequestItem = React.memo<{
             </span>
           </div>
           <div className="flex items-center gap-1.5">
+            {exchange.usage && (
+              <TokenUsageInline usage={exchange.usage} isSelected={isSelected} />
+            )}
             {exchange.latencyMs > 0 && (
               <span className={`${isSelected ? 'dark:text-slate-300' : 'text-slate-500 dark:text-slate-600'}`}>
                 {(exchange.latencyMs / 1000).toFixed(2)}s
@@ -429,3 +433,60 @@ const RequestItem = React.memo<{
     </div>
   );
 });
+
+// Inline token usage display with hover tooltip showing breakdown
+const TokenUsageInline: React.FC<{
+  usage: { input_tokens: number; output_tokens: number; total_tokens: number };
+  isSelected: boolean;
+}> = ({ usage, isSelected }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const ref = useRef<HTMLSpanElement>(null);
+
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setTooltipPos({ x: rect.left, y: rect.bottom + 4 });
+    setShowTooltip(true);
+  };
+
+  const handleMouseLeave = () => {
+    setShowTooltip(false);
+  };
+
+  return (
+    <span
+      ref={ref}
+      className={`relative flex items-center gap-0.5 cursor-default font-mono px-1 rounded ${
+        isSelected
+          ? 'text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/20'
+          : 'text-cyan-600 dark:text-cyan-500 bg-cyan-50 dark:bg-cyan-900/10'
+      }`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <Coins size={9} />
+      <span>{usage.total_tokens.toLocaleString()}</span>
+      {showTooltip && (
+        <div
+          className="fixed z-50 p-2.5 text-xs bg-slate-900 dark:bg-slate-700 text-white rounded-lg shadow-xl whitespace-nowrap font-mono"
+          style={{ left: tooltipPos.x, top: tooltipPos.y }}
+        >
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-blue-300">Prompt Tokens:</span>
+              <span className="font-bold">{usage.input_tokens.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-purple-300">Completion Tokens:</span>
+              <span className="font-bold">{usage.output_tokens.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 border-t border-slate-600 pt-1.5">
+              <span className="text-cyan-300">Total Tokens:</span>
+              <span className="font-bold">{usage.total_tokens.toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </span>
+  );
+};
