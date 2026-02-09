@@ -35,9 +35,10 @@ const App: React.FC = () => {
     setSelectedSessionId,
     selectedExchangeId,
     setSelectedExchangeId,
+    deleteSession,
   } = useSessions({ apiBase: API_BASE, pollMs: 2000 });
 
-  const { annotations, ensureLoaded, fetchAllAnnotations, updateSessionNote, updateRequestNote } = useAnnotations({
+  const { annotations, setAnnotations, ensureLoaded, fetchAllAnnotations, updateSessionNote, updateRequestNote } = useAnnotations({
     apiBase: API_BASE,
   });
 
@@ -73,6 +74,19 @@ const App: React.FC = () => {
     [currentSession, selectedExchangeId]
   );
 
+  const handleDeleteSession = async (sessionId: string) => {
+    const deleted = await deleteSession(sessionId);
+    if (deleted) {
+      setAnnotations((prev) => {
+        const next = { ...prev };
+        delete next[sessionId];
+        return next;
+      });
+    }
+
+    return deleted;
+  };
+
   return (
     <div
       className={`${
@@ -95,6 +109,7 @@ const App: React.FC = () => {
             onToggleTheme={toggleTheme}
             annotations={annotations}
             onUpdateSessionNote={updateSessionNote}
+            onDeleteSession={handleDeleteSession}
           />
 
           <MemoizedRequestsPane

@@ -7,6 +7,7 @@ Serves the React frontend and provides API endpoints for session data.
 import json
 import logging
 import mimetypes
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -147,6 +148,22 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
             result.append(pairs[seq_id])
 
         return {"id": session_id, "pairs": result}
+
+    @app.delete("/api/sessions/{session_id}")
+    async def delete_session(session_id: str):
+        """Delete a captured session and all local files under it."""
+        session_dir = state.watch_manager.output_dir / session_id
+
+        if not session_dir.exists() or not session_dir.is_dir():
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        try:
+            shutil.rmtree(session_dir)
+        except Exception as e:
+            logger.error(f"Error deleting session {session_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to delete session") from e
+
+        return {"ok": True}
 
     @app.get("/api/active")
     async def get_active_session():

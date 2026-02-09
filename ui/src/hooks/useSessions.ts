@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Session, SessionSummary } from '../types';
 import { normalizeSession } from '../utils';
 
@@ -14,7 +14,7 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedExchangeId, setSelectedExchangeId] = useState<string | null>(null);
 
-  const fetchSessionList = async () => {
+  const fetchSessionList = useCallback(async () => {
     try {
       const res = await fetch(`${apiBase}/api/sessions`);
       if (res.ok) {
@@ -26,9 +26,9 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
       console.error('Failed to fetch sessions', error);
     }
     return [] as SessionSummary[];
-  };
+  }, [apiBase]);
 
-  const fetchSessionDetails = async (sessionId: string) => {
+  const fetchSessionDetails = useCallback(async (sessionId: string) => {
     try {
       const res = await fetch(`${apiBase}/api/sessions/${sessionId}`);
       if (res.ok) {
@@ -45,7 +45,29 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
     } catch (error) {
       console.error('Failed to fetch session details', error);
     }
-  };
+  }, [apiBase]);
+
+  const deleteSession = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch(`${apiBase}/api/sessions/${sessionId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        return false;
+      }
+
+      setSessionList((prev) => prev.filter((session) => session.id !== sessionId));
+
+      const isDeletingSelectedSession = selectedSessionId === sessionId;
+      setSelectedSessionId((prevSelected) => (prevSelected === sessionId ? null : prevSelected));
+      if (isDeletingSelectedSession) {
+        setSelectedExchangeId(null);
+      }
+      setCurrentSession((prev) => (prev?.id === sessionId ? null : prev));
+      return true;
+    } catch (error) {
+      console.error('Failed to delete session', error);
+      return false;
+    }
+  }, [apiBase, selectedSessionId]);
 
   // Poll for session list updates
   useEffect(() => {
@@ -57,8 +79,7 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
     load();
     const interval = setInterval(fetchSessionList, pollMs);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, pollMs]);
+  }, [fetchSessionList, pollMs]);
 
   // When selectedSessionId changes, fetch details
   useEffect(() => {
@@ -67,8 +88,7 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
     } else {
       setCurrentSession(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSessionId, apiBase]);
+  }, [fetchSessionDetails, selectedSessionId]);
 
   // Auto-select the newest session once the list loads, and handle removed sessions
   useEffect(() => {
@@ -97,5 +117,6 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
     setSelectedExchangeId,
     refreshSessionList: fetchSessionList,
     fetchSessionDetails,
+    deleteSession,
   };
 }
