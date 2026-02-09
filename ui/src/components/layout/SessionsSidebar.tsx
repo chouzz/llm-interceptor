@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   Activity,
+  ArrowDown,
+  ArrowUp,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -46,15 +48,22 @@ export const SessionsSidebar: React.FC<{
   onDeleteSession,
 }) => {
   const [editingSessionNote, setEditingSessionNote] = useState<string | null>(null);
+  const [isNewestFirst, setIsNewestFirst] = useState(false);
 
   // Memoize callback functions
   const handleToggleCollapse = useCallback(() => {
     setIsCollapsed(!isCollapsed);
   }, [isCollapsed, setIsCollapsed]);
 
+  const handleToggleSortOrder = useCallback(() => {
+    setIsNewestFirst((prev) => !prev);
+  }, []);
+
   // Memoize rendered sessions
   const renderedSessions = useMemo(() => {
-    return sessionList.map((session) => {
+    const orderedSessions = isNewestFirst ? [...sessionList].reverse() : sessionList;
+
+    return orderedSessions.map((session) => {
       const sessionNote = annotations[session.id]?.session_note || '';
       const hasNote = sessionNote.length > 0;
       const isEditing = editingSessionNote === session.id;
@@ -79,6 +88,7 @@ export const SessionsSidebar: React.FC<{
     });
   }, [
     sessionList,
+    isNewestFirst,
     annotations,
     editingSessionNote,
     selectedSessionId,
@@ -118,6 +128,16 @@ export const SessionsSidebar: React.FC<{
           >
             {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
+          {!isCollapsed && (
+            <button
+              onClick={handleToggleSortOrder}
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 transition-colors"
+              title={isNewestFirst ? 'Sort: newest first' : 'Sort: oldest first'}
+              type="button"
+            >
+              {isNewestFirst ? <ArrowDown size={14} /> : <ArrowUp size={14} />}
+            </button>
+          )}
           {!isCollapsed && (
             <button
               onClick={onToggleTheme}
