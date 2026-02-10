@@ -128,7 +128,7 @@ const App: React.FC = () => {
             onUpdateRequestNote={updateRequestNote}
           />
 
-          <ExchangeDetailsPane currentExchange={currentExchange} />
+          <ExchangeDetailsPane currentExchange={currentExchange} sessionExchanges={filteredExchanges} />
         </>
       )}
     </div>
