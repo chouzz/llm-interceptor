@@ -30,6 +30,10 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id'];
 
+const DEFAULT_VISIBLE_REQUESTS = 50;
+
+const toSeconds = (milliseconds: number) => milliseconds / 1000;
+
 export const ExchangeDetailsPane: React.FC<{
   currentExchange: NormalizedExchange | null;
   sessionExchanges: NormalizedExchange[];
@@ -37,6 +41,8 @@ export const ExchangeDetailsPane: React.FC<{
   const [activeTab, setActiveTab] = useState<TabId>('chat');
   const [chatScrollEdges, setChatScrollEdges] = useState({ atTop: true, atBottom: true });
   const [isJsonWrapped, setIsJsonWrapped] = useState(false);
+  const [brushStartIndex, setBrushStartIndex] = useState(0);
+  const [brushEndIndex, setBrushEndIndex] = useState(DEFAULT_VISIBLE_REQUESTS - 1);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -76,62 +82,132 @@ export const ExchangeDetailsPane: React.FC<{
 
   const statsSummary = useMemo(() => {
     if (sessionExchanges.length === 0) {
-      return { totalLatencyMs: 0, averageLatencyMs: 0, requestCount: 0 };
+      return { totalLatencySeconds: 0, averageLatencySeconds: 0, requestCount: 0 };
     }
 
     const totalLatencyMs = sessionExchanges.reduce((sum, exchange) => sum + exchange.latencyMs, 0);
     const requestCount = sessionExchanges.length;
 
     return {
-      totalLatencyMs,
-      averageLatencyMs: totalLatencyMs / requestCount,
+      totalLatencySeconds: toSeconds(totalLatencyMs),
+      averageLatencySeconds: toSeconds(totalLatencyMs / requestCount),
       requestCount,
     };
   }, [sessionExchanges]);
 
-  const latencyChart = useMemo(() => {
-    if (sessionExchanges.length === 0) {
-      return null;
+  const chartData = useMemo(
+    () =>
+      sessionExchanges.map((exchange, index) => ({
+        id: exchange.id,
+        requestIndex: index + 1,
+        latencySeconds: toSeconds(exchange.latencyMs),
+      })),
+    [sessionExchanges]
+  );
+
+  const [brushDrag, setBrushDrag] = useState<{
+    mode: 'move' | 'left' | 'right';
+    startX: number;
+    startStart: number;
+    startEnd: number;
+  } | null>(null);
+  const brushTrackRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (chartData.length === 0) {
+      setBrushStartIndex(0);
+      setBrushEndIndex(0);
+      return;
     }
 
-    const width = 920;
-    const height = 360;
-    const padding = { top: 24, right: 24, bottom: 54, left: 64 };
-
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
-
-    const maxLatency = Math.max(...sessionExchanges.map((exchange) => exchange.latencyMs), 1);
-    const xDenominator = Math.max(sessionExchanges.length - 1, 1);
-
-    const points = sessionExchanges.map((exchange, index) => {
-      const x = padding.left + (index / xDenominator) * chartWidth;
-      const y = padding.top + chartHeight - (exchange.latencyMs / maxLatency) * chartHeight;
-      return { index, exchange, x, y };
+    setBrushStartIndex((prev) => Math.min(prev, chartData.length - 1));
+    setBrushEndIndex((prev) => {
+      const minEnd = Math.min(DEFAULT_VISIBLE_REQUESTS - 1, chartData.length - 1);
+      if (prev < 0) return minEnd;
+      return Math.min(prev, chartData.length - 1);
     });
+  }, [chartData.length]);
 
-    const polylinePoints = points.map((point) => `${point.x},${point.y}`).join(' ');
+  const selectedRange = useMemo(() => {
+    if (chartData.length === 0) {
+      return { start: 0, end: 0, count: 0 };
+    }
 
-    const yTicks = Array.from({ length: 5 }, (_, idx) => {
-      const ratio = idx / 4;
-      const value = Math.round(maxLatency * (1 - ratio));
-      const y = padding.top + chartHeight * ratio;
-      return { y, value };
-    });
-
-    const xTickIndexes = new Set<number>([0, Math.floor((sessionExchanges.length - 1) / 2), sessionExchanges.length - 1]);
+    const start = Math.max(0, Math.min(brushStartIndex, chartData.length - 1));
+    const end = Math.max(start, Math.min(brushEndIndex, chartData.length - 1));
 
     return {
-      width,
-      height,
-      padding,
-      chartHeight,
-      points,
-      polylinePoints,
-      yTicks,
-      xTickIndexes,
+      start,
+      end,
+      count: end - start + 1,
     };
-  }, [sessionExchanges]);
+  }, [brushStartIndex, brushEndIndex, chartData.length]);
+
+  const visibleData = useMemo(
+    () => chartData.slice(selectedRange.start, selectedRange.end + 1),
+    [chartData, selectedRange]
+  );
+
+  const visibleMaxLatency = useMemo(
+    () => Math.max(1, ...visibleData.map((item) => item.latencySeconds)),
+    [visibleData]
+  );
+
+  const overviewMaxLatency = useMemo(
+    () => Math.max(1, ...chartData.map((item) => item.latencySeconds)),
+    [chartData]
+  );
+
+  const visibleAverageSeconds = useMemo(() => {
+    if (visibleData.length === 0) {
+      return 0;
+    }
+
+    const visibleTotal = visibleData.reduce((sum, item) => sum + item.latencySeconds, 0);
+    return visibleTotal / visibleData.length;
+  }, [visibleData]);
+
+  useEffect(() => {
+    if (!brushDrag || chartData.length <= 1) {
+      return;
+    }
+
+    const handlePointerMove = (event: MouseEvent) => {
+      const trackRect = brushTrackRef.current?.getBoundingClientRect();
+      if (!trackRect || trackRect.width === 0) return;
+
+      const total = chartData.length - 1;
+      const delta = Math.round(((event.clientX - brushDrag.startX) / trackRect.width) * total);
+
+      if (brushDrag.mode === 'move') {
+        const windowSize = brushDrag.startEnd - brushDrag.startStart;
+        const nextStart = Math.max(0, Math.min(brushDrag.startStart + delta, total - windowSize));
+        const nextEnd = Math.min(total, nextStart + windowSize);
+        setBrushStartIndex(nextStart);
+        setBrushEndIndex(nextEnd);
+        return;
+      }
+
+      if (brushDrag.mode === 'left') {
+        const nextStart = Math.max(0, Math.min(brushDrag.startStart + delta, brushDrag.startEnd - 1));
+        setBrushStartIndex(nextStart);
+        return;
+      }
+
+      const nextEnd = Math.min(total, Math.max(brushDrag.startEnd + delta, brushDrag.startStart + 1));
+      setBrushEndIndex(nextEnd);
+    };
+
+    const handlePointerUp = () => setBrushDrag(null);
+
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
+    };
+  }, [brushDrag, chartData.length]);
 
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -352,107 +428,151 @@ export const ExchangeDetailsPane: React.FC<{
 
             {/* Statistical View */}
             {activeTab === 'stats' && (
-              <div className="max-w-5xl mx-auto">
+              <div className="max-w-6xl mx-auto w-full">
                 <div className="bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-slate-800 rounded-xl p-5 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
                       <LineChart size={16} className="text-indigo-500" />
                       Request Latency Trend
                     </h3>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Y: Latency (ms) · X: Request #</span>
+                    {chartData.length > 0 && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Showing #{selectedRange.start + 1} - #{selectedRange.end + 1} / {chartData.length}
+                      </span>
+                    )}
                   </div>
 
-                  {latencyChart ? (
-                    <div className="rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/30 p-3">
-                      <svg viewBox={`0 0 ${latencyChart.width} ${latencyChart.height}`} className="w-full h-auto" role="img" aria-label="Session request latency chart">
-                        {latencyChart.yTicks.map((tick) => (
-                          <g key={tick.y}>
-                            <line
-                              x1={latencyChart.padding.left}
-                              y1={tick.y}
-                              x2={latencyChart.width - latencyChart.padding.right}
-                              y2={tick.y}
-                              stroke="currentColor"
-                              className="text-gray-200 dark:text-slate-700"
-                              strokeDasharray="4 4"
-                            />
-                            <text
-                              x={latencyChart.padding.left - 10}
-                              y={tick.y + 4}
-                              textAnchor="end"
-                              className="fill-slate-500 dark:fill-slate-400"
-                              fontSize="11"
-                            >
-                              {tick.value}
-                            </text>
-                          </g>
-                        ))}
+                  {chartData.length > 0 ? (
+                    <div className="rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/30 p-3 space-y-4">
+                      <div className="w-full h-[52vh] min-h-[320px] max-h-[640px]">
+                        <svg viewBox="0 0 1000 420" className="w-full h-full" role="img" aria-label="Session request latency chart">
+                          {Array.from({ length: 6 }).map((_, tickIndex) => {
+                            const tickValue = Math.round((visibleMaxLatency * (5 - tickIndex)) / 5);
+                            const y = 30 + tickIndex * ((360 - 30) / 5);
 
-                        <polyline
-                          points={latencyChart.polylinePoints}
-                          fill="none"
-                          stroke="currentColor"
-                          className="text-indigo-500"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
+                            return (
+                              <g key={`visible-y-tick-${tickValue}-${tickIndex}`}>
+                                <line
+                                  x1={60}
+                                  y1={y}
+                                  x2={970}
+                                  y2={y}
+                                  stroke="currentColor"
+                                  className="text-gray-200 dark:text-slate-700"
+                                  strokeDasharray="4 4"
+                                />
+                                <text x={50} y={y + 4} textAnchor="end" fontSize="11" className="fill-slate-500 dark:fill-slate-400">
+                                  {tickValue}
+                                </text>
+                              </g>
+                            );
+                          })}
 
-                        {latencyChart.points.map((point) => (
-                          <g key={point.exchange.id}>
-                            <circle cx={point.x} cy={point.y} r="4" className="fill-indigo-500" />
-                            <title>{`Request #${point.index + 1}: ${point.exchange.latencyMs} ms`}</title>
-                          </g>
-                        ))}
+                          {visibleData.map((item, index) => {
+                            const barWidth = Math.max(2, 860 / Math.max(visibleData.length, 1));
+                            const barSpacing = 860 / Math.max(visibleData.length, 1);
+                            const x = 70 + index * barSpacing;
+                            const barHeight = Math.max(2, (item.latencySeconds / visibleMaxLatency) * 300);
+                            const y = 360 - barHeight;
+                            const isLabelTick = visibleData.length <= 12 || index % Math.ceil(visibleData.length / 8) === 0;
 
-                        {latencyChart.points
-                          .filter((point) => latencyChart.xTickIndexes.has(point.index))
-                          .map((point) => (
-                            <text
-                              key={`x-tick-${point.index}`}
-                              x={point.x}
-                              y={latencyChart.height - 20}
-                              textAnchor="middle"
-                              className="fill-slate-500 dark:fill-slate-400"
-                              fontSize="11"
-                            >
-                              {point.index + 1}
-                            </text>
-                          ))}
+                            return (
+                              <g key={item.id}>
+                                <rect x={x} y={y} width={Math.max(1, barWidth - 2)} height={barHeight} rx={2} className="fill-indigo-500" />
+                                <title>{`Request #${item.requestIndex}: ${item.latencySeconds.toFixed(1)} s`}</title>
+                                {isLabelTick && (
+                                  <text x={x + barWidth / 2} y={380} textAnchor="middle" fontSize="11" className="fill-slate-500 dark:fill-slate-400">
+                                    {item.requestIndex}
+                                  </text>
+                                )}
+                              </g>
+                            );
+                          })}
 
-                        <text
-                          x={latencyChart.padding.left - 44}
-                          y={latencyChart.padding.top + latencyChart.chartHeight / 2}
-                          textAnchor="middle"
-                          transform={`rotate(-90 ${latencyChart.padding.left - 44} ${latencyChart.padding.top + latencyChart.chartHeight / 2})`}
-                          className="fill-slate-500 dark:fill-slate-400"
-                          fontSize="12"
+                          <text
+                            x={28}
+                            y={195}
+                            textAnchor="middle"
+                            transform="rotate(-90 28 195)"
+                            className="fill-slate-500 dark:fill-slate-400"
+                            fontSize="12"
+                          >
+                            Latency (s)
+                          </text>
+                          <text x={520} y={408} textAnchor="middle" className="fill-slate-500 dark:fill-slate-400" fontSize="12">
+                            Request Index
+                          </text>
+                        </svg>
+                      </div>
+
+                      <div className="rounded-md border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-3 space-y-2">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Brush Bar (drag center to move, drag handles to resize)</p>
+                        <svg viewBox="0 0 1000 90" className="w-full h-16">
+                          {chartData.map((item, index) => {
+                            const barSpacing = 920 / Math.max(chartData.length, 1);
+                            const x = 60 + index * barSpacing;
+                            const barHeight = Math.max(2, (item.latencySeconds / overviewMaxLatency) * 50);
+                            const y = 70 - barHeight;
+                            return <rect key={`overview-${item.id}`} x={x} y={y} width={Math.max(1, barSpacing - 1)} height={barHeight} className="fill-slate-400/70 dark:fill-slate-500/60" />;
+                          })}
+                        </svg>
+
+                        <div
+                          ref={brushTrackRef}
+                          className="relative h-8 rounded bg-slate-200/70 dark:bg-slate-800"
+                          onMouseDown={(event) => {
+                            const track = brushTrackRef.current?.getBoundingClientRect();
+                            if (!track || chartData.length <= 1) return;
+
+                            const left = (selectedRange.start / (chartData.length - 1)) * track.width;
+                            const right = (selectedRange.end / (chartData.length - 1)) * track.width;
+                            const offsetX = event.clientX - track.left;
+                            const edgeThreshold = 10;
+
+                            const mode: 'move' | 'left' | 'right' =
+                              Math.abs(offsetX - left) < edgeThreshold
+                                ? 'left'
+                                : Math.abs(offsetX - right) < edgeThreshold
+                                  ? 'right'
+                                  : 'move';
+
+                            setBrushDrag({
+                              mode,
+                              startX: event.clientX,
+                              startStart: selectedRange.start,
+                              startEnd: selectedRange.end,
+                            });
+                          }}
                         >
-                          Latency (ms)
-                        </text>
-                        <text
-                          x={(latencyChart.width + latencyChart.padding.left - latencyChart.padding.right) / 2}
-                          y={latencyChart.height - 6}
-                          textAnchor="middle"
-                          className="fill-slate-500 dark:fill-slate-400"
-                          fontSize="12"
-                        >
-                          Request Index
-                        </text>
-                      </svg>
+                          <div
+                            className="absolute top-0 h-full bg-indigo-500/35 border border-indigo-500 rounded cursor-grab"
+                            style={{
+                              left: `${(selectedRange.start / Math.max(chartData.length - 1, 1)) * 100}%`,
+                              width: `${((selectedRange.end - selectedRange.start) / Math.max(chartData.length - 1, 1)) * 100}%`,
+                            }}
+                          >
+                            <div className="absolute left-0 top-0 h-full w-2 bg-indigo-600 cursor-ew-resize" />
+                            <div className="absolute right-0 top-0 h-full w-2 bg-indigo-600 cursor-ew-resize" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-sm text-slate-500 italic text-center py-8">No request data available for statistics.</div>
                   )}
 
-                  <div className="grid grid-cols-3 gap-3 mt-5">
+                  <div className="grid grid-cols-4 gap-3 mt-5">
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Total Time</p>
-                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{statsSummary.totalLatencyMs.toLocaleString()} ms</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{statsSummary.totalLatencySeconds.toFixed(1)} s</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Average Time</p>
-                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{statsSummary.averageLatencyMs.toFixed(1)} ms</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Average Time (All)</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{Math.round(statsSummary.averageLatencySeconds)} s</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Average Time (Visible)</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{Math.round(visibleAverageSeconds)} s</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Request Count</p>
