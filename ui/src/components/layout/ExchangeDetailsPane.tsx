@@ -34,49 +34,6 @@ const DEFAULT_VISIBLE_REQUESTS = 50;
 
 const toSeconds = (milliseconds: number) => milliseconds / 1000;
 
-const buildTicks = (maxValue: number, desiredTickCount = 6) => {
-  if (maxValue <= 0) {
-    return [0, 1];
-  }
-
-  const roughStep = Math.max(maxValue / (desiredTickCount - 1), 1);
-  const step = Math.max(1, Math.ceil(roughStep / 5) * 5);
-  const lastTick = Math.ceil(maxValue / step) * step;
-  const ticks: number[] = [];
-
-  for (let value = 0; value <= lastTick; value += step) {
-    ticks.push(value);
-  }
-
-  if (ticks[ticks.length - 1] !== maxValue && maxValue > ticks[ticks.length - 1]) {
-    ticks.push(maxValue);
-  }
-
-  return ticks;
-};
-
-const buildRequestTicks = (requestCount: number, desiredTickCount = 6) => {
-  if (requestCount <= 1) {
-    return [1];
-  }
-
-  const roughStep = requestCount / (desiredTickCount - 1);
-  const scale = Math.pow(10, Math.floor(Math.log10(Math.max(roughStep, 1))));
-  const normalized = roughStep / scale;
-  const niceNormalized = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  const step = Math.max(1, Math.round(niceNormalized * scale));
-
-  const ticks: number[] = [1];
-  for (let value = step; value <= requestCount; value += step) {
-    ticks.push(value);
-  }
-  if (ticks[ticks.length - 1] !== requestCount) {
-    ticks.push(requestCount);
-  }
-
-  return Array.from(new Set(ticks));
-};
-
 export const ExchangeDetailsPane: React.FC<{
   currentExchange: NormalizedExchange | null;
   sessionExchanges: NormalizedExchange[];
@@ -84,8 +41,8 @@ export const ExchangeDetailsPane: React.FC<{
   const [activeTab, setActiveTab] = useState<TabId>('chat');
   const [chatScrollEdges, setChatScrollEdges] = useState({ atTop: true, atBottom: true });
   const [isJsonWrapped, setIsJsonWrapped] = useState(false);
-  const [rangeStart, setRangeStart] = useState(0);
-  const [visibleRequestCount, setVisibleRequestCount] = useState(DEFAULT_VISIBLE_REQUESTS);
+  const [brushStartIndex, setBrushStartIndex] = useState(0);
+  const [brushEndIndex, setBrushEndIndex] = useState(DEFAULT_VISIBLE_REQUESTS - 1);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -138,76 +95,119 @@ export const ExchangeDetailsPane: React.FC<{
     };
   }, [sessionExchanges]);
 
-  const maxRangeStart = useMemo(
-    () => Math.max(0, sessionExchanges.length - visibleRequestCount),
-    [sessionExchanges.length, visibleRequestCount]
+  const chartData = useMemo(
+    () =>
+      sessionExchanges.map((exchange, index) => ({
+        id: exchange.id,
+        requestIndex: index + 1,
+        latencySeconds: toSeconds(exchange.latencyMs),
+      })),
+    [sessionExchanges]
   );
 
-  const rangeEnd = useMemo(
-    () => Math.min(sessionExchanges.length, rangeStart + visibleRequestCount),
-    [sessionExchanges.length, rangeStart, visibleRequestCount]
-  );
-
-  const visibleExchanges = useMemo(
-    () => sessionExchanges.slice(rangeStart, rangeEnd),
-    [sessionExchanges, rangeStart, rangeEnd]
-  );
+  const [brushDrag, setBrushDrag] = useState<{
+    mode: 'move' | 'left' | 'right';
+    startX: number;
+    startStart: number;
+    startEnd: number;
+  } | null>(null);
+  const brushTrackRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setVisibleRequestCount((prev) => Math.min(Math.max(prev, 1), Math.max(sessionExchanges.length, 1)));
-    setRangeStart((prev) => Math.min(prev, Math.max(0, sessionExchanges.length - visibleRequestCount)));
-  }, [sessionExchanges.length, visibleRequestCount]);
-
-  const latencyChart = useMemo(() => {
-    if (visibleExchanges.length === 0) {
-      return null;
+    if (chartData.length === 0) {
+      setBrushStartIndex(0);
+      setBrushEndIndex(0);
+      return;
     }
 
-    const width = 920;
-    const height = 420;
-    const padding = { top: 24, right: 24, bottom: 54, left: 64 };
-
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
-
-    const maxLatencySeconds = Math.max(...visibleExchanges.map((exchange) => toSeconds(exchange.latencyMs)), 1);
-    const yTickValues = buildTicks(Math.ceil(maxLatencySeconds));
-    const yMaxValue = Math.max(yTickValues[yTickValues.length - 1], 1);
-    const xDenominator = Math.max(visibleExchanges.length - 1, 1);
-
-    const points = visibleExchanges.map((exchange, index) => {
-      const x = padding.left + (index / xDenominator) * chartWidth;
-      const y = padding.top + chartHeight - (toSeconds(exchange.latencyMs) / yMaxValue) * chartHeight;
-      return {
-        globalIndex: rangeStart + index,
-        visibleIndex: index,
-        exchange,
-        x,
-        y,
-      };
+    setBrushStartIndex((prev) => Math.min(prev, chartData.length - 1));
+    setBrushEndIndex((prev) => {
+      const minEnd = Math.min(DEFAULT_VISIBLE_REQUESTS - 1, chartData.length - 1);
+      if (prev < 0) return minEnd;
+      return Math.min(prev, chartData.length - 1);
     });
+  }, [chartData.length]);
 
-    const polylinePoints = points.map((point) => `${point.x},${point.y}`).join(' ');
+  const selectedRange = useMemo(() => {
+    if (chartData.length === 0) {
+      return { start: 0, end: 0, count: 0 };
+    }
 
-    const yTicks = yTickValues.map((value) => ({
-      value,
-      y: padding.top + chartHeight - (value / yMaxValue) * chartHeight,
-    }));
-
-    const xTickValues = buildRequestTicks(visibleExchanges.length);
+    const start = Math.max(0, Math.min(brushStartIndex, chartData.length - 1));
+    const end = Math.max(start, Math.min(brushEndIndex, chartData.length - 1));
 
     return {
-      width,
-      height,
-      padding,
-      chartHeight,
-      points,
-      polylinePoints,
-      yTicks,
-      xTickValues,
-      yMaxValue,
+      start,
+      end,
+      count: end - start + 1,
     };
-  }, [visibleExchanges, rangeStart]);
+  }, [brushStartIndex, brushEndIndex, chartData.length]);
+
+  const visibleData = useMemo(
+    () => chartData.slice(selectedRange.start, selectedRange.end + 1),
+    [chartData, selectedRange]
+  );
+
+  const visibleMaxLatency = useMemo(
+    () => Math.max(1, ...visibleData.map((item) => item.latencySeconds)),
+    [visibleData]
+  );
+
+  const overviewMaxLatency = useMemo(
+    () => Math.max(1, ...chartData.map((item) => item.latencySeconds)),
+    [chartData]
+  );
+
+  const visibleAverageSeconds = useMemo(() => {
+    if (visibleData.length === 0) {
+      return 0;
+    }
+
+    const visibleTotal = visibleData.reduce((sum, item) => sum + item.latencySeconds, 0);
+    return visibleTotal / visibleData.length;
+  }, [visibleData]);
+
+  useEffect(() => {
+    if (!brushDrag || chartData.length <= 1) {
+      return;
+    }
+
+    const handlePointerMove = (event: MouseEvent) => {
+      const trackRect = brushTrackRef.current?.getBoundingClientRect();
+      if (!trackRect || trackRect.width === 0) return;
+
+      const total = chartData.length - 1;
+      const delta = Math.round(((event.clientX - brushDrag.startX) / trackRect.width) * total);
+
+      if (brushDrag.mode === 'move') {
+        const windowSize = brushDrag.startEnd - brushDrag.startStart;
+        const nextStart = Math.max(0, Math.min(brushDrag.startStart + delta, total - windowSize));
+        const nextEnd = Math.min(total, nextStart + windowSize);
+        setBrushStartIndex(nextStart);
+        setBrushEndIndex(nextEnd);
+        return;
+      }
+
+      if (brushDrag.mode === 'left') {
+        const nextStart = Math.max(0, Math.min(brushDrag.startStart + delta, brushDrag.startEnd - 1));
+        setBrushStartIndex(nextStart);
+        return;
+      }
+
+      const nextEnd = Math.min(total, Math.max(brushDrag.startEnd + delta, brushDrag.startStart + 1));
+      setBrushEndIndex(nextEnd);
+    };
+
+    const handlePointerUp = () => setBrushDrag(null);
+
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
+    };
+  }, [brushDrag, chartData.length]);
 
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -225,12 +225,6 @@ export const ExchangeDetailsPane: React.FC<{
     el.addEventListener('scroll', handleScroll);
     return () => el.removeEventListener('scroll', handleScroll);
   }, [activeTab, currentExchange]);
-
-  const handleVisibleRequestCountChange = (nextCount: number) => {
-    const clamped = Math.min(Math.max(1, nextCount), Math.max(sessionExchanges.length, 1));
-    setVisibleRequestCount(clamped);
-    setRangeStart((prev) => Math.min(prev, Math.max(0, sessionExchanges.length - clamped)));
-  };
 
   const scrollChatTo = (position: 'top' | 'bottom') => {
     const el = chatScrollRef.current;
@@ -441,150 +435,144 @@ export const ExchangeDetailsPane: React.FC<{
                       <LineChart size={16} className="text-indigo-500" />
                       Request Latency Trend
                     </h3>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      Showing #{rangeStart + 1} - #{rangeEnd} / {sessionExchanges.length}
-                    </span>
+                    {chartData.length > 0 && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Showing #{selectedRange.start + 1} - #{selectedRange.end + 1} / {chartData.length}
+                      </span>
+                    )}
                   </div>
 
-                  {latencyChart ? (
-                    <>
-                      <div className="rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/30 p-3">
-                        <svg
-                          viewBox={`0 0 ${latencyChart.width} ${latencyChart.height}`}
-                          className="w-full h-[52vh] min-h-[320px] max-h-[640px]"
-                          role="img"
-                          aria-label="Session request latency chart"
-                        >
-                          {latencyChart.yTicks.map((tick) => (
-                            <g key={tick.y}>
-                              <line
-                                x1={latencyChart.padding.left}
-                                y1={tick.y}
-                                x2={latencyChart.width - latencyChart.padding.right}
-                                y2={tick.y}
-                                stroke="currentColor"
-                                className="text-gray-200 dark:text-slate-700"
-                                strokeDasharray="4 4"
-                              />
-                              <text
-                                x={latencyChart.padding.left - 10}
-                                y={tick.y + 4}
-                                textAnchor="end"
-                                className="fill-slate-500 dark:fill-slate-400"
-                                fontSize="11"
-                              >
-                                {Math.round(tick.value)}
-                              </text>
-                            </g>
-                          ))}
-
-                          <polyline
-                            points={latencyChart.polylinePoints}
-                            fill="none"
-                            stroke="currentColor"
-                            className="text-indigo-500"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-
-                          {latencyChart.points.map((point) => (
-                            <g key={point.exchange.id}>
-                              <circle cx={point.x} cy={point.y} r="4" className="fill-indigo-500" />
-                              <title>{`Request #${point.globalIndex + 1}: ${toSeconds(point.exchange.latencyMs).toFixed(1)} s`}</title>
-                            </g>
-                          ))}
-
-                          {latencyChart.xTickValues.map((tickValue) => {
-                            const visibleIndex = Math.max(0, tickValue - 1);
-                            const x =
-                              latencyChart.padding.left +
-                              (visibleIndex / Math.max(visibleExchanges.length - 1, 1)) *
-                                (latencyChart.width - latencyChart.padding.left - latencyChart.padding.right);
+                  {chartData.length > 0 ? (
+                    <div className="rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/30 p-3 space-y-4">
+                      <div className="w-full h-[52vh] min-h-[320px] max-h-[640px]">
+                        <svg viewBox="0 0 1000 420" className="w-full h-full" role="img" aria-label="Session request latency chart">
+                          {Array.from({ length: 6 }).map((_, tickIndex) => {
+                            const tickValue = Math.round((visibleMaxLatency * (5 - tickIndex)) / 5);
+                            const y = 30 + tickIndex * ((360 - 30) / 5);
 
                             return (
-                              <text
-                                key={`x-tick-${tickValue}`}
-                                x={x}
-                                y={latencyChart.height - 20}
-                                textAnchor="middle"
-                                className="fill-slate-500 dark:fill-slate-400"
-                                fontSize="11"
-                              >
-                                {rangeStart + tickValue}
-                              </text>
+                              <g key={`visible-y-tick-${tickValue}-${tickIndex}`}>
+                                <line
+                                  x1={60}
+                                  y1={y}
+                                  x2={970}
+                                  y2={y}
+                                  stroke="currentColor"
+                                  className="text-gray-200 dark:text-slate-700"
+                                  strokeDasharray="4 4"
+                                />
+                                <text x={50} y={y + 4} textAnchor="end" fontSize="11" className="fill-slate-500 dark:fill-slate-400">
+                                  {tickValue}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {visibleData.map((item, index) => {
+                            const barWidth = Math.max(2, 860 / Math.max(visibleData.length, 1));
+                            const barSpacing = 860 / Math.max(visibleData.length, 1);
+                            const x = 70 + index * barSpacing;
+                            const barHeight = Math.max(2, (item.latencySeconds / visibleMaxLatency) * 300);
+                            const y = 360 - barHeight;
+                            const isLabelTick = visibleData.length <= 12 || index % Math.ceil(visibleData.length / 8) === 0;
+
+                            return (
+                              <g key={item.id}>
+                                <rect x={x} y={y} width={Math.max(1, barWidth - 2)} height={barHeight} rx={2} className="fill-indigo-500" />
+                                <title>{`Request #${item.requestIndex}: ${item.latencySeconds.toFixed(1)} s`}</title>
+                                {isLabelTick && (
+                                  <text x={x + barWidth / 2} y={380} textAnchor="middle" fontSize="11" className="fill-slate-500 dark:fill-slate-400">
+                                    {item.requestIndex}
+                                  </text>
+                                )}
+                              </g>
                             );
                           })}
 
                           <text
-                            x={latencyChart.padding.left - 44}
-                            y={latencyChart.padding.top + latencyChart.chartHeight / 2}
+                            x={28}
+                            y={195}
                             textAnchor="middle"
-                            transform={`rotate(-90 ${latencyChart.padding.left - 44} ${latencyChart.padding.top + latencyChart.chartHeight / 2})`}
+                            transform="rotate(-90 28 195)"
                             className="fill-slate-500 dark:fill-slate-400"
                             fontSize="12"
                           >
                             Latency (s)
                           </text>
-                          <text
-                            x={(latencyChart.width + latencyChart.padding.left - latencyChart.padding.right) / 2}
-                            y={latencyChart.height - 6}
-                            textAnchor="middle"
-                            className="fill-slate-500 dark:fill-slate-400"
-                            fontSize="12"
-                          >
+                          <text x={520} y={408} textAnchor="middle" className="fill-slate-500 dark:fill-slate-400" fontSize="12">
                             Request Index
                           </text>
                         </svg>
                       </div>
 
-                      <div className="mt-4 rounded-lg border border-gray-200 dark:border-slate-700 p-4 bg-white dark:bg-slate-900/40 space-y-4">
-                        <div>
-                          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-                            <span>Scroll Request Window</span>
-                            <span>
-                              {rangeStart + 1} - {rangeEnd}
-                            </span>
+                      <div className="rounded-md border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-3 space-y-2">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Brush Bar (drag center to move, drag handles to resize)</p>
+                        <svg viewBox="0 0 1000 90" className="w-full h-16">
+                          {chartData.map((item, index) => {
+                            const barSpacing = 920 / Math.max(chartData.length, 1);
+                            const x = 60 + index * barSpacing;
+                            const barHeight = Math.max(2, (item.latencySeconds / overviewMaxLatency) * 50);
+                            const y = 70 - barHeight;
+                            return <rect key={`overview-${item.id}`} x={x} y={y} width={Math.max(1, barSpacing - 1)} height={barHeight} className="fill-slate-400/70 dark:fill-slate-500/60" />;
+                          })}
+                        </svg>
+
+                        <div
+                          ref={brushTrackRef}
+                          className="relative h-8 rounded bg-slate-200/70 dark:bg-slate-800"
+                          onMouseDown={(event) => {
+                            const track = brushTrackRef.current?.getBoundingClientRect();
+                            if (!track || chartData.length <= 1) return;
+
+                            const left = (selectedRange.start / (chartData.length - 1)) * track.width;
+                            const right = (selectedRange.end / (chartData.length - 1)) * track.width;
+                            const offsetX = event.clientX - track.left;
+                            const edgeThreshold = 10;
+
+                            const mode: 'move' | 'left' | 'right' =
+                              Math.abs(offsetX - left) < edgeThreshold
+                                ? 'left'
+                                : Math.abs(offsetX - right) < edgeThreshold
+                                  ? 'right'
+                                  : 'move';
+
+                            setBrushDrag({
+                              mode,
+                              startX: event.clientX,
+                              startStart: selectedRange.start,
+                              startEnd: selectedRange.end,
+                            });
+                          }}
+                        >
+                          <div
+                            className="absolute top-0 h-full bg-indigo-500/35 border border-indigo-500 rounded cursor-grab"
+                            style={{
+                              left: `${(selectedRange.start / Math.max(chartData.length - 1, 1)) * 100}%`,
+                              width: `${((selectedRange.end - selectedRange.start) / Math.max(chartData.length - 1, 1)) * 100}%`,
+                            }}
+                          >
+                            <div className="absolute left-0 top-0 h-full w-2 bg-indigo-600 cursor-ew-resize" />
+                            <div className="absolute right-0 top-0 h-full w-2 bg-indigo-600 cursor-ew-resize" />
                           </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={maxRangeStart}
-                            value={Math.min(rangeStart, maxRangeStart)}
-                            onChange={(event) => setRangeStart(Number(event.target.value))}
-                            className="w-full"
-                            disabled={maxRangeStart === 0}
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
-                            <span>Visible Requests</span>
-                            <span>{visibleRequestCount}</span>
-                          </div>
-                          <input
-                            type="range"
-                            min={1}
-                            max={Math.max(sessionExchanges.length, 1)}
-                            value={visibleRequestCount}
-                            onChange={(event) => handleVisibleRequestCountChange(Number(event.target.value))}
-                            className="w-full"
-                            disabled={sessionExchanges.length <= 1}
-                          />
                         </div>
                       </div>
-                    </>
+                    </div>
                   ) : (
                     <div className="text-sm text-slate-500 italic text-center py-8">No request data available for statistics.</div>
                   )}
 
-                  <div className="grid grid-cols-3 gap-3 mt-5">
+                  <div className="grid grid-cols-4 gap-3 mt-5">
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Total Time</p>
                       <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{statsSummary.totalLatencySeconds.toFixed(1)} s</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Average Time</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Average Time (All)</p>
                       <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{Math.round(statsSummary.averageLatencySeconds)} s</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Average Time (Visible)</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{Math.round(visibleAverageSeconds)} s</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Request Count</p>
