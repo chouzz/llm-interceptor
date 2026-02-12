@@ -6,12 +6,22 @@ import {
   Box,
   ChevronDown,
   FileJson,
-  LineChart,
+  LineChart as LineChartIcon,
   MessageSquare,
   Terminal,
   WrapText,
   Zap,
 } from 'lucide-react';
+import {
+  Brush,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import type { NormalizedExchange } from '../../types';
 import { safeJSONStringify } from '../../utils/ui';
 import { ChatBubble } from '../chat/ChatBubble';
@@ -24,11 +34,15 @@ const TABS = [
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
   { id: 'system', icon: Terminal, label: 'System' },
   { id: 'tools', icon: Box, label: 'Tools' },
-  { id: 'stats', icon: LineChart, label: 'Statistical' },
+  { id: 'stats', icon: LineChartIcon, label: 'Statistical' },
   { id: 'raw', icon: FileJson, label: 'JSON' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
+const DEFAULT_BRUSH_VISIBLE_POINTS = 50;
+
+const formatSecondsFromMs = (ms: number, maximumFractionDigits = 3) =>
+  (ms / 1000).toLocaleString(undefined, { maximumFractionDigits });
 
 export const ExchangeDetailsPane: React.FC<{
   currentExchange: NormalizedExchange | null;
@@ -39,6 +53,10 @@ export const ExchangeDetailsPane: React.FC<{
   const [isJsonWrapped, setIsJsonWrapped] = useState(false);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const [latencyBrushRange, setLatencyBrushRange] = useState<{
+    startIndex: number;
+    endIndex: number;
+  } | null>(null);
 
   // Sticky tool header state
   const [stickyToolInfo, setStickyToolInfo] = useState<{
@@ -89,49 +107,36 @@ export const ExchangeDetailsPane: React.FC<{
     };
   }, [sessionExchanges]);
 
-  const latencyChart = useMemo(() => {
+  const latencyChartData = useMemo(
+    () =>
+      sessionExchanges.map((exchange, index) => ({
+        id: exchange.id,
+        requestIndex: index + 1,
+        latencySec: exchange.latencyMs / 1000,
+      })),
+    [sessionExchanges]
+  );
+
+  useEffect(() => {
     if (sessionExchanges.length === 0) {
-      return null;
+      setLatencyBrushRange(null);
+      return;
     }
 
-    const width = 920;
-    const height = 360;
-    const padding = { top: 24, right: 24, bottom: 54, left: 64 };
-
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
-
-    const maxLatency = Math.max(...sessionExchanges.map((exchange) => exchange.latencyMs), 1);
-    const xDenominator = Math.max(sessionExchanges.length - 1, 1);
-
-    const points = sessionExchanges.map((exchange, index) => {
-      const x = padding.left + (index / xDenominator) * chartWidth;
-      const y = padding.top + chartHeight - (exchange.latencyMs / maxLatency) * chartHeight;
-      return { index, exchange, x, y };
-    });
-
-    const polylinePoints = points.map((point) => `${point.x},${point.y}`).join(' ');
-
-    const yTicks = Array.from({ length: 5 }, (_, idx) => {
-      const ratio = idx / 4;
-      const value = Math.round(maxLatency * (1 - ratio));
-      const y = padding.top + chartHeight * ratio;
-      return { y, value };
-    });
-
-    const xTickIndexes = new Set<number>([0, Math.floor((sessionExchanges.length - 1) / 2), sessionExchanges.length - 1]);
-
-    return {
-      width,
-      height,
-      padding,
-      chartHeight,
-      points,
-      polylinePoints,
-      yTicks,
-      xTickIndexes,
-    };
+    const endIndex = sessionExchanges.length - 1;
+    const startIndex = Math.max(0, sessionExchanges.length - DEFAULT_BRUSH_VISIBLE_POINTS);
+    setLatencyBrushRange({ startIndex, endIndex });
   }, [sessionExchanges]);
+
+  const handleLatencyBrushChange = useCallback(
+    (range: { startIndex?: number; endIndex?: number }) => {
+      if (typeof range.startIndex !== 'number' || typeof range.endIndex !== 'number') {
+        return;
+      }
+      setLatencyBrushRange({ startIndex: range.startIndex, endIndex: range.endIndex });
+    },
+    []
+  );
 
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -352,94 +357,73 @@ export const ExchangeDetailsPane: React.FC<{
 
             {/* Statistical View */}
             {activeTab === 'stats' && (
-              <div className="max-w-5xl mx-auto">
+              <div className="w-full">
                 <div className="bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-slate-800 rounded-xl p-5 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                      <LineChart size={16} className="text-indigo-500" />
+                      <LineChartIcon size={16} className="text-indigo-500" />
                       Request Latency Trend
                     </h3>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Y: Latency (ms) · X: Request #</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Y: Latency (s) · X: Request #</span>
                   </div>
 
-                  {latencyChart ? (
-                    <div className="rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/30 p-3">
-                      <svg viewBox={`0 0 ${latencyChart.width} ${latencyChart.height}`} className="w-full h-auto" role="img" aria-label="Session request latency chart">
-                        {latencyChart.yTicks.map((tick) => (
-                          <g key={tick.y}>
-                            <line
-                              x1={latencyChart.padding.left}
-                              y1={tick.y}
-                              x2={latencyChart.width - latencyChart.padding.right}
-                              y2={tick.y}
-                              stroke="currentColor"
-                              className="text-gray-200 dark:text-slate-700"
-                              strokeDasharray="4 4"
+                  {latencyChartData.length > 0 ? (
+                    <div className="rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/30 p-3 h-[420px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={latencyChartData} margin={{ top: 14, right: 22, left: 8, bottom: 12 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.3} />
+                          <XAxis
+                            dataKey="requestIndex"
+                            tick={{ fontSize: 11, fill: '#64748b' }}
+                            tickLine={false}
+                            axisLine={{ stroke: '#94a3b8', strokeOpacity: 0.3 }}
+                            minTickGap={20}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 11, fill: '#64748b' }}
+                            tickLine={false}
+                            axisLine={{ stroke: '#94a3b8', strokeOpacity: 0.3 }}
+                            tickFormatter={(value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                            width={72}
+                            label={{
+                              value: 'Latency (s)',
+                              angle: -90,
+                              position: 'insideLeft',
+                              offset: -4,
+                              fill: '#64748b',
+                              fontSize: 12,
+                            }}
+                          />
+                          <Tooltip
+                            formatter={(value) => [
+                              `${Number(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 3 })} s`,
+                              'Latency',
+                            ]}
+                            labelFormatter={(label) => `Request #${String(label ?? '-')}`}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="latencySec"
+                            name="Latency"
+                            stroke="#6366f1"
+                            strokeWidth={2.5}
+                            dot={false}
+                            activeDot={{ r: 4 }}
+                            isAnimationActive={false}
+                          />
+                          {latencyBrushRange && (
+                            <Brush
+                              dataKey="requestIndex"
+                              height={30}
+                              travellerWidth={10}
+                              stroke="#6366f1"
+                              startIndex={latencyBrushRange.startIndex}
+                              endIndex={latencyBrushRange.endIndex}
+                              onChange={handleLatencyBrushChange}
                             />
-                            <text
-                              x={latencyChart.padding.left - 10}
-                              y={tick.y + 4}
-                              textAnchor="end"
-                              className="fill-slate-500 dark:fill-slate-400"
-                              fontSize="11"
-                            >
-                              {tick.value}
-                            </text>
-                          </g>
-                        ))}
-
-                        <polyline
-                          points={latencyChart.polylinePoints}
-                          fill="none"
-                          stroke="currentColor"
-                          className="text-indigo-500"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-
-                        {latencyChart.points.map((point) => (
-                          <g key={point.exchange.id}>
-                            <circle cx={point.x} cy={point.y} r="4" className="fill-indigo-500" />
-                            <title>{`Request #${point.index + 1}: ${point.exchange.latencyMs} ms`}</title>
-                          </g>
-                        ))}
-
-                        {latencyChart.points
-                          .filter((point) => latencyChart.xTickIndexes.has(point.index))
-                          .map((point) => (
-                            <text
-                              key={`x-tick-${point.index}`}
-                              x={point.x}
-                              y={latencyChart.height - 20}
-                              textAnchor="middle"
-                              className="fill-slate-500 dark:fill-slate-400"
-                              fontSize="11"
-                            >
-                              {point.index + 1}
-                            </text>
-                          ))}
-
-                        <text
-                          x={latencyChart.padding.left - 44}
-                          y={latencyChart.padding.top + latencyChart.chartHeight / 2}
-                          textAnchor="middle"
-                          transform={`rotate(-90 ${latencyChart.padding.left - 44} ${latencyChart.padding.top + latencyChart.chartHeight / 2})`}
-                          className="fill-slate-500 dark:fill-slate-400"
-                          fontSize="12"
-                        >
-                          Latency (ms)
-                        </text>
-                        <text
-                          x={(latencyChart.width + latencyChart.padding.left - latencyChart.padding.right) / 2}
-                          y={latencyChart.height - 6}
-                          textAnchor="middle"
-                          className="fill-slate-500 dark:fill-slate-400"
-                          fontSize="12"
-                        >
-                          Request Index
-                        </text>
-                      </svg>
+                          )}
+                        </LineChart>
+                      </ResponsiveContainer>
                     </div>
                   ) : (
                     <div className="text-sm text-slate-500 italic text-center py-8">No request data available for statistics.</div>
@@ -448,11 +432,11 @@ export const ExchangeDetailsPane: React.FC<{
                   <div className="grid grid-cols-3 gap-3 mt-5">
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Total Time</p>
-                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{statsSummary.totalLatencyMs.toLocaleString()} ms</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{formatSecondsFromMs(statsSummary.totalLatencyMs, 2)} s</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Average Time</p>
-                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{statsSummary.averageLatencyMs.toFixed(1)} ms</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{formatSecondsFromMs(statsSummary.averageLatencyMs, 3)} s</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Request Count</p>
