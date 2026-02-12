@@ -10,7 +10,7 @@
 
 ---
 
-![CCI Web UI](cci-ui-screenshot.png)
+![LLI Web UI](lli-ui-screenshot.png)
 
 ## ✨ Features
 
@@ -45,8 +45,6 @@ git clone https://github.com/chouzz/llm-interceptor.git
 cd llm-interceptor
 uv sync
 ```
-
-> Note: This project was formerly named **claude-code-inspector**. The new canonical name is **llm-interceptor**.
 
 ## 🚀 Quick Start
 

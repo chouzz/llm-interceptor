@@ -70,4 +70,3 @@ def reachable_host_for_listen_host(listen_host: str) -> str:
     if listen_host == "0.0.0.0":
         return detect_primary_ipv4() or "127.0.0.1"
     return listen_host
-

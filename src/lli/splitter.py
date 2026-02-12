@@ -9,8 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from cci.logger import get_logger
-from cci.storage import read_jsonl
+from lli.logger import get_logger
+from lli.storage import read_jsonl
 
 
 class RecordSplitter:

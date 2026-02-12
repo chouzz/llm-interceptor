@@ -6,7 +6,7 @@ from typing import Any
 
 import streamlit as st
 
-from cci.config import get_default_trace_dir
+from lli.config import get_default_trace_dir
 
 # ================= 1. Config & Utils =================
 

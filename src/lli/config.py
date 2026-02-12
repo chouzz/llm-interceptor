@@ -86,8 +86,8 @@ class LoggingConfig(BaseModel):
     log_file: str | None = None
 
 
-class CCIConfig(BaseModel):
-    """Main configuration model for LLM Interceptor (legacy name kept for compatibility)."""
+class LLIConfig(BaseModel):
+    """Main configuration model for LLM Interceptor."""
 
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     filter: FilterConfig = Field(default_factory=FilterConfig)
@@ -96,24 +96,22 @@ class CCIConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
-def load_config(config_path: str | Path | None = None) -> CCIConfig:
+def load_config(config_path: str | Path | None = None) -> LLIConfig:
     """
     Load configuration from file or create default.
 
     Priority:
     1. Explicit config path
-    2. ./lli.toml or ./lli.yaml (preferred)
-    3. ./cci.toml or ./cci.yaml (legacy)
-    4. ~/.config/lli/config.toml or config.yaml (preferred)
-    5. ~/.config/cci/config.toml or config.yaml (legacy)
-    6. Environment variables
-    7. Defaults
+    2. ./lli.toml or ./lli.yaml
+    3. ~/.config/lli/config.toml or config.yaml
+    4. Environment variables
+    5. Defaults
 
     Args:
         config_path: Optional explicit path to config file
 
     Returns:
-        CCIConfig instance
+        LLIConfig instance
     """
     config_data: dict[str, Any] = {}
 
@@ -125,7 +123,6 @@ def load_config(config_path: str | Path | None = None) -> CCIConfig:
     else:
         # Current directory
         search_paths.extend([Path("lli.toml"), Path("lli.yaml"), Path("lli.yml")])
-        search_paths.extend([Path("cci.toml"), Path("cci.yaml"), Path("cci.yml")])
         # User config directory
         config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
         search_paths.extend(
@@ -133,9 +130,6 @@ def load_config(config_path: str | Path | None = None) -> CCIConfig:
                 config_home / "lli" / "config.toml",
                 config_home / "lli" / "config.yaml",
                 config_home / "lli" / "config.yml",
-                config_home / "cci" / "config.toml",
-                config_home / "cci" / "config.yaml",
-                config_home / "cci" / "config.yml",
             ]
         )
 
@@ -148,7 +142,7 @@ def load_config(config_path: str | Path | None = None) -> CCIConfig:
     # Apply environment variable overrides
     config_data = _apply_env_overrides(config_data)
 
-    return CCIConfig(**config_data)
+    return LLIConfig(**config_data)
 
 
 def _load_file(path: Path) -> dict[str, Any]:
@@ -167,16 +161,10 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     """Apply environment variable overrides to config."""
     # Map environment variables to config paths
     env_mapping = {
-        # Preferred (new) names
         "LLI_PROXY_HOST": ("proxy", "host"),
         "LLI_PROXY_PORT": ("proxy", "port"),
         "LLI_OUTPUT_FILE": ("storage", "output_file"),
         "LLI_LOG_LEVEL": ("logging", "level"),
-        # Legacy names (kept for backward compatibility)
-        "CCI_PROXY_HOST": ("proxy", "host"),
-        "CCI_PROXY_PORT": ("proxy", "port"),
-        "CCI_OUTPUT_FILE": ("storage", "output_file"),
-        "CCI_LOG_LEVEL": ("logging", "level"),
     }
 
     for env_var, path in env_mapping.items():
@@ -185,9 +173,7 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
             _set_nested(config, path, value)
 
     # Handle include patterns from env (comma-separated)
-    include_patterns = os.environ.get("LLI_INCLUDE_PATTERNS") or os.environ.get(
-        "CCI_INCLUDE_PATTERNS"
-    )
+    include_patterns = os.environ.get("LLI_INCLUDE_PATTERNS")
     if include_patterns:
         if "filter" not in config:
             config["filter"] = {}

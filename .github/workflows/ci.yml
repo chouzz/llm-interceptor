@@ -33,7 +33,7 @@ jobs:
         run: uv run ruff check src/
 
       - name: Run type checking with mypy
-        run: uv run mypy src/cci --ignore-missing-imports
+        run: uv run mypy src/lli --ignore-missing-imports
         continue-on-error: true
 
       - name: Run tests
@@ -42,8 +42,8 @@ jobs:
 
       - name: Verify CLI works
         run: |
-          uv run cci --version
-          uv run cci --help
+          uv run lli --version
+          uv run lli --help
 
   build:
     runs-on: ubuntu-latest

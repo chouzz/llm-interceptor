@@ -1,7 +1,7 @@
 """
 Command-line interface for LLM Interceptor.
 
-Provides the `lli` command (and legacy alias `cci`) with subcommands for watch,
+Provides the `lli` command with subcommands for watch,
 merge, split, config, and stats.
 """
 
@@ -18,18 +18,18 @@ import click
 from rich.panel import Panel
 from rich.table import Table
 
-from cci import __version__
-from cci.config import get_cert_info, get_default_trace_dir, load_config
-from cci.net import detect_primary_ipv4, reachable_host_for_listen_host
+from lli import __version__
+from lli.config import get_cert_info, get_default_trace_dir, load_config
+from lli.net import detect_primary_ipv4, reachable_host_for_listen_host
 
 if TYPE_CHECKING:
-    from cci.config import CCIConfig
-    from cci.watch import WatchManager
+    from lli.config import LLIConfig
+    from lli.watch import WatchManager
 
-from cci.logger import get_console, setup_logger
-from cci.merger import merge_streams
-from cci.splitter import split_records
-from cci.storage import count_records
+from lli.logger import get_console, setup_logger
+from lli.merger import merge_streams
+from lli.splitter import split_records
+from lli.storage import count_records
 
 # Use the shared console from logger module for coordinated output
 # This ensures proper coordination between Live displays and logging
@@ -464,7 +464,7 @@ def watch(
 
         export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem
     """
-    from cci.watch import WatchManager
+    from lli.watch import WatchManager
 
     # Load configuration
     config = load_config(ctx.obj.get("config_path"))
@@ -512,7 +512,7 @@ def watch(
 
     # Launch UI server if requested
     if ui:
-        from cci.server import run_server
+        from lli.server import run_server
 
         if _is_port_in_use(ui_host, ui_port):
             ui_url = f"http://{reachable_host_for_listen_host(ui_host)}:{ui_port}"
@@ -560,7 +560,7 @@ def watch(
 
     def run_proxy_in_thread() -> None:
         """Run the proxy in a separate thread."""
-        from cci.proxy import run_watch_proxy
+        from lli.proxy import run_watch_proxy
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -598,7 +598,7 @@ def _display_watch_banner(
     port: int,
     output_dir: str,
     global_log_path: Path,
-    config: CCIConfig,
+    config: LLIConfig,
     lan: bool = False,
 ) -> None:
     """Display the watch mode startup banner."""
@@ -630,7 +630,7 @@ def _display_watch_banner(
     console.print()
 
 
-def _display_filter_rules(config: CCIConfig) -> None:
+def _display_filter_rules(config: LLIConfig) -> None:
     """Display the current URL filter rules."""
     console.print("[bold cyan]URL Filter Rules:[/]")
 
@@ -666,7 +666,7 @@ def _display_filter_rules(config: CCIConfig) -> None:
 
 def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) -> None:
     """Run the main watch mode interaction loop."""
-    from cci.watch import WatchState
+    from lli.watch import WatchState
 
     def _recording_status_text(session_id: str) -> str:
         return (

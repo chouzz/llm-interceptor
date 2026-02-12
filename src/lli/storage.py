@@ -12,7 +12,7 @@ from typing import Any, TextIO
 
 from pydantic import BaseModel
 
-from cci.logger import get_logger
+from lli.logger import get_logger
 
 
 class JSONLWriter:

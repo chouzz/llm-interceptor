@@ -8,8 +8,8 @@ import fnmatch
 import re
 from re import Pattern
 
-from cci.config import FilterConfig
-from cci.logger import get_logger
+from lli.config import FilterConfig
+from lli.logger import get_logger
 
 
 class URLFilter:

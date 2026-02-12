@@ -6,7 +6,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: path.resolve(__dirname, '../src/cci/static'),
+    outDir: path.resolve(__dirname, '../src/lli/static'),
     emptyOutDir: true,
   },
 })

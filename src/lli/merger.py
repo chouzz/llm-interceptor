@@ -10,9 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from cci.logger import get_logger
-from cci.models import ToolCall
-from cci.storage import JSONLWriter, read_jsonl
+from lli.logger import get_logger
+from lli.models import ToolCall
+from lli.storage import JSONLWriter, read_jsonl
 
 
 class StreamMerger:

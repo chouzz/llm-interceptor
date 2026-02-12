@@ -1,6 +1,6 @@
 import json
 
-from cci.watch import WatchManager, WatchState
+from lli.watch import WatchManager, WatchState
 
 
 def test_cancel_recording_transitions_to_idle(tmp_path) -> None:

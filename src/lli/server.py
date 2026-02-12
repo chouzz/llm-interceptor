@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from cci.watch import WatchManager
+from lli.watch import WatchManager
 
 # Get logger
 logger = logging.getLogger("llm_interceptor.server")

@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from cci.merger import StreamMerger
+from lli.merger import StreamMerger
 
 
 class TestExtractTextFromChunks:

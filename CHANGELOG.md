@@ -73,23 +73,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **App icon update** - Updated `cci-icon.png` with transparent rounded corners
+- **App icon update** - Updated `lli-icon.png` with transparent rounded corners
   - Replaced white background corners with transparent alpha channel
   - Updated icon to 512×512 PNG format for better visual integration
   - Icon now displays well on both dark and light backgrounds
-- **UI screenshot** - Updated `cci-ui-screenshot.png` to reflect latest UI changes
+- **UI screenshot** - Updated `lli-ui-screenshot.png` to reflect latest UI changes
 
 ## [2.0.0] - 2025-12-18
 
 ### Added
 
-- **LLM Interceptor branding** - Complete rebranding from Claude Code Inspector to LLM Interceptor (LLI)
+- **LLM Interceptor branding** - Complete rebranding from LLM Interceptor to LLM Interceptor (LLI)
 - **Performance optimizations** - Base performance improvements for better efficiency
 
 ### Changed
 
-- **Project rename** - Renamed from `cci` to `lli` (LLM Interceptor) across all components
-- **CLI command** - Primary command changed from `cci` to `lli`
+- **Project rename** - Renamed from `lli` to `lli` (LLM Interceptor) across all components
+- **CLI command** - Primary command changed from `lli` to `lli`
 - **Package name** - Updated package name to `llm-interceptor`
 - **Log improvements** - Enhanced log output coloring and deduplication for better readability
 
@@ -139,7 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FastAPI server** - Backend API for serving UI and session data
   - RESTful endpoints for sessions and session details
   - Static file serving for bundled React app
-- **UI auto-launch** - `cci watch` now automatically starts the UI server (default: enabled)
+- **UI auto-launch** - `lli watch` now automatically starts the UI server (default: enabled)
 - **Build script** - `build_ui.py` for building frontend assets
 
 ### Changed
@@ -192,7 +192,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial release (project formerly known as Claude-Code-Inspector / CCI)
+- Initial release (project formerly known as llm-interceptor / LLI)
 - **Core Features**
   - MITM proxy server using mitmproxy for traffic interception
   - Support for both streaming (SSE) and non-streaming API responses
@@ -201,10 +201,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Stream merger utility to consolidate streaming chunks
 
 - **CLI Commands**
-  - `cci capture` - Start proxy and capture LLM API traffic
-  - `cci merge` - Merge streaming response chunks into complete records
-  - `cci config` - Display configuration and setup help
-  - `cci stats` - Show statistics for captured trace files
+  - `lli capture` - Start proxy and capture LLM API traffic
+  - `lli merge` - Merge streaming response chunks into complete records
+  - `lli config` - Display configuration and setup help
+  - `lli stats` - Show statistics for captured trace files
 
 - **Supported LLM Providers**
   - Anthropic (api.anthropic.com)

@@ -2,11 +2,11 @@
 
 import pytest
 
-from cci import __version__
-from cci.config import CCIConfig, FilterConfig
-from cci.filters import URLFilter
-from cci.models import RecordType, RequestRecord
-from cci.storage import JSONLWriter
+from lli import __version__
+from lli.config import FilterConfig, LLIConfig
+from lli.filters import URLFilter
+from lli.models import RecordType, RequestRecord
+from lli.storage import JSONLWriter
 
 
 class TestVersion:
@@ -30,7 +30,7 @@ class TestConfig:
 
     def test_default_config(self) -> None:
         """Test default configuration values."""
-        config = CCIConfig()
+        config = LLIConfig()
         assert config.proxy.host == "127.0.0.1"
         assert config.proxy.port == 9090
         assert config.masking.mask_auth_headers is True

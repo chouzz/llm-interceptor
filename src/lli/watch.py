@@ -16,8 +16,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, TextIO
 
-from cci.config import get_default_trace_dir
-from cci.logger import get_logger
+from lli.config import get_default_trace_dir
+from lli.logger import get_logger
 
 
 class WatchState(Enum):
@@ -492,7 +492,7 @@ class WatchManager:
 
             # Run merge and split if records exist
             if record_count > 0:
-                from cci.merger import merge_streams
+                from lli.merger import merge_streams
 
                 try:
                     merge_stats = merge_streams(
@@ -506,7 +506,7 @@ class WatchManager:
                     )
 
                     # Run split - output directly to session directory
-                    from cci.splitter import split_records
+                    from lli.splitter import split_records
 
                     split_stats = split_records(merged_path, session_dir)
                     self._logger.info(
