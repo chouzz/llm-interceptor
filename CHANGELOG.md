@@ -9,15 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New features for version 2.4.0
+- **Token usage visualization** - Added token usage chart and summary display in ExchangeDetailsPane for better token consumption tracking
+- **Latency analysis** - Integrated recharts for latency visualization and added statistical latency analysis tab
+- **Session management enhancements**
+  - Added toggle for sessions sort order (ascending/descending by timestamp)
+  - Support for deleting sessions from sidebar
+- **Token consumption display** - Added token consumption metrics to Requests panel for detailed request analysis
+- **Error logging** - Log TLS handshake failures with target host information for better debugging
 
 ### Changed
 
-- Improvements and enhancements
-
-### Fixed
-
-- Bug fixes and improvements
+- **Package refactoring** - Renamed `cci` package to `lli` and updated all references for consistency
 
 ## [2.3.1] - 2026-01-22
 
