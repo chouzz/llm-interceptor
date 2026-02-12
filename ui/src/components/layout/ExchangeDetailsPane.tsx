@@ -13,6 +13,8 @@ import {
   Zap,
 } from 'lucide-react';
 import {
+  Bar,
+  BarChart,
   Brush,
   CartesianGrid,
   Line,
@@ -43,6 +45,7 @@ const DEFAULT_BRUSH_VISIBLE_POINTS = 50;
 
 const formatSecondsFromMs = (ms: number, maximumFractionDigits = 3) =>
   (ms / 1000).toLocaleString(undefined, { maximumFractionDigits });
+const formatInteger = (value: number) => value.toLocaleString();
 
 export const ExchangeDetailsPane: React.FC<{
   currentExchange: NormalizedExchange | null;
@@ -54,6 +57,10 @@ export const ExchangeDetailsPane: React.FC<{
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const [latencyBrushRange, setLatencyBrushRange] = useState<{
+    startIndex: number;
+    endIndex: number;
+  } | null>(null);
+  const [tokenBrushRange, setTokenBrushRange] = useState<{
     startIndex: number;
     endIndex: number;
   } | null>(null);
@@ -117,15 +124,55 @@ export const ExchangeDetailsPane: React.FC<{
     [sessionExchanges]
   );
 
+  const tokenChartData = useMemo(
+    () =>
+      sessionExchanges.map((exchange, index) => ({
+        id: exchange.id,
+        requestIndex: index + 1,
+        totalTokens: exchange.usage?.total_tokens ?? 0,
+        inputTokens: exchange.usage?.input_tokens ?? 0,
+        outputTokens: exchange.usage?.output_tokens ?? 0,
+      })),
+    [sessionExchanges]
+  );
+
+  const tokenSummary = useMemo(() => {
+    if (sessionExchanges.length === 0) {
+      return {
+        totalTokens: 0,
+        averageTokens: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+      };
+    }
+
+    const totals = sessionExchanges.reduce(
+      (acc, exchange) => {
+        acc.totalTokens += exchange.usage?.total_tokens ?? 0;
+        acc.totalInputTokens += exchange.usage?.input_tokens ?? 0;
+        acc.totalOutputTokens += exchange.usage?.output_tokens ?? 0;
+        return acc;
+      },
+      { totalTokens: 0, totalInputTokens: 0, totalOutputTokens: 0 }
+    );
+
+    return {
+      ...totals,
+      averageTokens: totals.totalTokens / sessionExchanges.length,
+    };
+  }, [sessionExchanges]);
+
   useEffect(() => {
     if (sessionExchanges.length === 0) {
       setLatencyBrushRange(null);
+      setTokenBrushRange(null);
       return;
     }
 
     const endIndex = sessionExchanges.length - 1;
     const startIndex = Math.max(0, sessionExchanges.length - DEFAULT_BRUSH_VISIBLE_POINTS);
     setLatencyBrushRange({ startIndex, endIndex });
+    setTokenBrushRange({ startIndex, endIndex });
   }, [sessionExchanges]);
 
   const handleLatencyBrushChange = useCallback(
@@ -134,6 +181,16 @@ export const ExchangeDetailsPane: React.FC<{
         return;
       }
       setLatencyBrushRange({ startIndex: range.startIndex, endIndex: range.endIndex });
+    },
+    []
+  );
+
+  const handleTokenBrushChange = useCallback(
+    (range: { startIndex?: number; endIndex?: number }) => {
+      if (typeof range.startIndex !== 'number' || typeof range.endIndex !== 'number') {
+        return;
+      }
+      setTokenBrushRange({ startIndex: range.startIndex, endIndex: range.endIndex });
     },
     []
   );
@@ -441,6 +498,107 @@ export const ExchangeDetailsPane: React.FC<{
                     <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
                       <p className="text-xs text-slate-500 dark:text-slate-400">Request Count</p>
                       <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{statsSummary.requestCount}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                        <LineChartIcon size={16} className="text-violet-500" />
+                        Request Token Usage
+                      </h3>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Y: Tokens · X: Request #
+                      </span>
+                    </div>
+
+                    {tokenChartData.length > 0 ? (
+                      <div className="rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/30 p-3 h-[320px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={tokenChartData}
+                            margin={{ top: 14, right: 22, left: 8, bottom: 12 }}
+                            barCategoryGap={0}
+                            barGap={0}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.3} />
+                            <XAxis
+                              dataKey="requestIndex"
+                              tick={{ fontSize: 11, fill: '#64748b' }}
+                              tickLine={false}
+                              axisLine={{ stroke: '#94a3b8', strokeOpacity: 0.3 }}
+                              minTickGap={20}
+                            />
+                            <YAxis
+                              tick={{ fontSize: 11, fill: '#64748b' }}
+                              tickLine={false}
+                              axisLine={{ stroke: '#94a3b8', strokeOpacity: 0.3 }}
+                              tickFormatter={(value: number) => formatInteger(value)}
+                              width={72}
+                              label={{
+                                value: 'Tokens',
+                                angle: -90,
+                                position: 'insideLeft',
+                                offset: -4,
+                                fill: '#64748b',
+                                fontSize: 12,
+                              }}
+                            />
+                            <Tooltip
+                              formatter={(value) => [formatInteger(Number(value ?? 0)), 'Total Tokens']}
+                              labelFormatter={(label) => `Request #${String(label ?? '-')}`}
+                            />
+                            <Bar
+                              dataKey="totalTokens"
+                              name="Total Tokens"
+                              fill="#8b5cf6"
+                              isAnimationActive={false}
+                            />
+                            {tokenBrushRange && (
+                              <Brush
+                                dataKey="requestIndex"
+                                height={30}
+                                travellerWidth={10}
+                                stroke="#8b5cf6"
+                                startIndex={tokenBrushRange.startIndex}
+                                endIndex={tokenBrushRange.endIndex}
+                                onChange={handleTokenBrushChange}
+                              />
+                            )}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-slate-500 italic text-center py-8">
+                        No token data available for statistics.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-3 mt-5">
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Total Tokens</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        {formatInteger(tokenSummary.totalTokens)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Average Tokens</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        {formatInteger(Math.round(tokenSummary.averageTokens))}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Input Tokens</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        {formatInteger(tokenSummary.totalInputTokens)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Output Tokens</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        {formatInteger(tokenSummary.totalOutputTokens)}
+                      </p>
                     </div>
                   </div>
                 </div>
