@@ -1,6 +1,6 @@
 [project]
 name = "llm-interceptor"
-version = "2.3.1"
+version = "2.4.0"
 description = "Intercept and analyze LLM traffic from AI coding tools"
 readme = "README.md"
 license = { text = "MIT" }
