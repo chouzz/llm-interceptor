@@ -9,6 +9,7 @@ import {
   LineChart as LineChartIcon,
   MessageSquare,
   Terminal,
+  Wrench,
   WrapText,
   Zap,
 } from 'lucide-react';
@@ -17,9 +18,11 @@ import {
   BarChart,
   Brush,
   CartesianGrid,
+  ComposedChart,
   Line,
   LineChart,
   ResponsiveContainer,
+  Scatter,
   Tooltip,
   XAxis,
   YAxis,
@@ -46,6 +49,10 @@ const DEFAULT_BRUSH_VISIBLE_POINTS = 50;
 const formatSecondsFromMs = (ms: number, maximumFractionDigits = 3) =>
   (ms / 1000).toLocaleString(undefined, { maximumFractionDigits });
 const formatInteger = (value: number) => value.toLocaleString();
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+const asToolName = (value: unknown) =>
+  typeof value === 'string' && value.trim().length > 0 ? value : 'unknown';
 
 export const ExchangeDetailsPane: React.FC<{
   currentExchange: NormalizedExchange | null;
@@ -61,6 +68,10 @@ export const ExchangeDetailsPane: React.FC<{
     endIndex: number;
   } | null>(null);
   const [tokenBrushRange, setTokenBrushRange] = useState<{
+    startIndex: number;
+    endIndex: number;
+  } | null>(null);
+  const [toolBrushRange, setToolBrushRange] = useState<{
     startIndex: number;
     endIndex: number;
   } | null>(null);
@@ -162,10 +173,87 @@ export const ExchangeDetailsPane: React.FC<{
     };
   }, [sessionExchanges]);
 
+  const toolTimelineData = useMemo(() => {
+    const rows: Array<{ requestIndex: number; toolName: string; eventIndex: number; toolIndex: number }> = [];
+    const firstSeenToolIndexes = new Map<string, number>();
+
+    const getToolIndex = (toolName: string) => {
+      const existing = firstSeenToolIndexes.get(toolName);
+      if (typeof existing === 'number') {
+        return existing;
+      }
+      const next = firstSeenToolIndexes.size;
+      firstSeenToolIndexes.set(toolName, next);
+      return next;
+    };
+
+    const pushToolUseFromContent = (content: unknown, requestIndex: number) => {
+      if (!Array.isArray(content)) return;
+      content.forEach((block) => {
+        if (!isRecord(block) || block.type !== 'tool_use') return;
+        const toolName = asToolName(block.name);
+        rows.push({
+          requestIndex,
+          toolName,
+          eventIndex: rows.length + 1,
+          toolIndex: getToolIndex(toolName),
+        });
+      });
+    };
+
+    sessionExchanges.forEach((exchange, idx) => {
+      const requestIndex = idx + 1;
+      exchange.messages.forEach((message) => pushToolUseFromContent(message.content, requestIndex));
+      pushToolUseFromContent(exchange.responseContent, requestIndex);
+    });
+
+    return rows;
+  }, [sessionExchanges]);
+
+  const toolNamesInOrder = useMemo(
+    () =>
+      Array.from(
+        toolTimelineData.reduce((map, row) => {
+          if (!map.has(row.toolIndex)) {
+            map.set(row.toolIndex, row.toolName);
+          }
+          return map;
+        }, new Map<number, string>())
+      )
+        .sort((a, b) => a[0] - b[0])
+        .map((entry) => entry[1]),
+    [toolTimelineData]
+  );
+
+  const toolCallCounts = useMemo(
+    () =>
+      Array.from(
+        toolTimelineData.reduce((acc, row) => {
+          acc.set(row.toolName, (acc.get(row.toolName) ?? 0) + 1);
+          return acc;
+        }, new Map<string, number>())
+      )
+        .map(([toolName, count]) => ({ toolName, count }))
+        .sort((a, b) => b.count - a.count || a.toolName.localeCompare(b.toolName)),
+    [toolTimelineData]
+  );
+
+  const toolSummary = useMemo(() => {
+    const totalToolCalls = toolTimelineData.length;
+    const uniqueTools = toolCallCounts.length;
+    return {
+      totalToolCalls,
+      uniqueTools,
+      averageToolCallsPerRequest:
+        sessionExchanges.length > 0 ? totalToolCalls / sessionExchanges.length : 0,
+    };
+  }, [toolCallCounts.length, toolTimelineData.length, sessionExchanges.length]);
+
   useEffect(() => {
     if (sessionExchanges.length === 0) {
       setLatencyBrushRange(null);
       setTokenBrushRange(null);
+      setToolBrushRange(null);
       return;
     }
 
@@ -174,6 +262,17 @@ export const ExchangeDetailsPane: React.FC<{
     setLatencyBrushRange({ startIndex, endIndex });
     setTokenBrushRange({ startIndex, endIndex });
   }, [sessionExchanges]);
+
+  useEffect(() => {
+    if (toolTimelineData.length === 0) {
+      setToolBrushRange(null);
+      return;
+    }
+
+    const endIndex = toolTimelineData.length - 1;
+    const startIndex = Math.max(0, toolTimelineData.length - DEFAULT_BRUSH_VISIBLE_POINTS);
+    setToolBrushRange({ startIndex, endIndex });
+  }, [toolTimelineData]);
 
   const handleLatencyBrushChange = useCallback(
     (range: { startIndex?: number; endIndex?: number }) => {
@@ -191,6 +290,16 @@ export const ExchangeDetailsPane: React.FC<{
         return;
       }
       setTokenBrushRange({ startIndex: range.startIndex, endIndex: range.endIndex });
+    },
+    []
+  );
+
+  const handleToolBrushChange = useCallback(
+    (range: { startIndex?: number; endIndex?: number }) => {
+      if (typeof range.startIndex !== 'number' || typeof range.endIndex !== 'number') {
+        return;
+      }
+      setToolBrushRange({ startIndex: range.startIndex, endIndex: range.endIndex });
     },
     []
   );
@@ -600,6 +709,171 @@ export const ExchangeDetailsPane: React.FC<{
                         {formatInteger(tokenSummary.totalOutputTokens)}
                       </p>
                     </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                        <Wrench size={16} className="text-orange-500" />
+                        Tool Call Timeline
+                      </h3>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Y: Tool Name · X: Request #
+                      </span>
+                    </div>
+
+                    {toolTimelineData.length > 0 ? (
+                      <div className="rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/30 p-3 h-[360px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart
+                            data={toolTimelineData}
+                            margin={{ top: 14, right: 22, left: 8, bottom: 12 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.3} />
+                            <XAxis
+                              dataKey="requestIndex"
+                              tick={{ fontSize: 11, fill: '#64748b' }}
+                              tickLine={false}
+                              axisLine={{ stroke: '#94a3b8', strokeOpacity: 0.3 }}
+                              minTickGap={20}
+                            />
+                            <YAxis
+                              dataKey="toolIndex"
+                              type="number"
+                              domain={[0, Math.max(toolNamesInOrder.length - 1, 0)]}
+                              ticks={toolNamesInOrder.map((_, idx) => idx)}
+                              allowDecimals={false}
+                              tick={{ fontSize: 11, fill: '#64748b' }}
+                              tickLine={false}
+                              axisLine={{ stroke: '#94a3b8', strokeOpacity: 0.3 }}
+                              tickFormatter={(value: number) => toolNamesInOrder[value] ?? `tool-${value}`}
+                              width={140}
+                              label={{
+                                value: 'Tool Name',
+                                angle: -90,
+                                position: 'insideLeft',
+                                offset: -4,
+                                fill: '#64748b',
+                                fontSize: 12,
+                              }}
+                            />
+                            <Tooltip
+                              formatter={(_, __, payload) => {
+                                if (!payload?.payload || !isRecord(payload.payload)) {
+                                  return ['-', 'Tool'];
+                                }
+                                return [String(payload.payload.toolName ?? '-'), 'Tool'];
+                              }}
+                              labelFormatter={(_, payload) => {
+                                if (!payload || payload.length === 0 || !isRecord(payload[0].payload)) {
+                                  return 'Request #-';
+                                }
+                                return `Request #${String(payload[0].payload.requestIndex ?? '-')}`;
+                              }}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="toolIndex"
+                              stroke="#f97316"
+                              strokeWidth={1.25}
+                              dot={false}
+                              activeDot={false}
+                              isAnimationActive={false}
+                              connectNulls={false}
+                            />
+                            <Scatter
+                              dataKey="toolIndex"
+                              fill="#ea580c"
+                              isAnimationActive={false}
+                              legendType="none"
+                              shape="circle"
+                            />
+                            {toolBrushRange && (
+                              <Brush
+                                dataKey="eventIndex"
+                                height={30}
+                                travellerWidth={10}
+                                stroke="#f97316"
+                                startIndex={toolBrushRange.startIndex}
+                                endIndex={toolBrushRange.endIndex}
+                                onChange={handleToolBrushChange}
+                              />
+                            )}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-slate-500 italic text-center py-8">
+                        No tool call data available for statistics.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 mt-5">
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Total Tool Calls</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        {formatInteger(toolSummary.totalToolCalls)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Unique Tools</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        {formatInteger(toolSummary.uniqueTools)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900/40">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Avg Calls / Request</p>
+                      <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        {toolSummary.averageToolCallsPerRequest.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900/40">
+                    <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/70">
+                      <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        Tool Call Counts
+                      </h4>
+                    </div>
+                    {toolCallCounts.length > 0 ? (
+                      <div className="max-h-[260px] overflow-auto custom-scrollbar">
+                        <table className="w-full text-sm">
+                          <thead className="sticky top-0 bg-white dark:bg-slate-900/95">
+                            <tr className="text-left border-b border-gray-200 dark:border-slate-700">
+                              <th className="px-4 py-2 font-semibold text-slate-600 dark:text-slate-300">
+                                Tool Name
+                              </th>
+                              <th className="px-4 py-2 font-semibold text-slate-600 dark:text-slate-300 text-right">
+                                Calls
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {toolCallCounts.map((row) => (
+                              <tr
+                                key={row.toolName}
+                                className="border-b border-gray-100 dark:border-slate-800 last:border-b-0"
+                              >
+                                <td className="px-4 py-2 font-mono text-slate-700 dark:text-slate-200">
+                                  {row.toolName}
+                                </td>
+                                <td className="px-4 py-2 text-right text-slate-700 dark:text-slate-200">
+                                  {formatInteger(row.count)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="px-4 py-6 text-sm text-slate-500 italic text-center">
+                        No tool calls were found in this session.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
