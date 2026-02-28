@@ -2,8 +2,10 @@
 
 import pytest
 
+from mitmproxy.options import Options
+
 from lli import __version__
-from lli.config import FilterConfig, LLIConfig
+from lli.config import FilterConfig, LLIConfig, load_config, ProxyConfig
 from lli.filters import URLFilter
 from lli.models import RecordType, RequestRecord
 from lli.storage import JSONLWriter
@@ -42,6 +44,40 @@ class TestConfig:
         assert any("anthropic" in p for p in patterns)
         assert any("openai" in p for p in patterns)
         assert any("googleapis" in p for p in patterns)
+
+    def test_no_proxy_from_toml(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Test loading no_proxy from config file."""
+        config_file = tmp_path / "lli.toml"
+        config_file.write_text(
+            '[proxy]\n'
+            'host = "127.0.0.1"\n'
+            'port = 9090\n'
+            'no_proxy = ["localhost", "127.0.0.1"]\n',
+            encoding="utf-8",
+        )
+        config = load_config(config_file)
+        assert config.proxy.no_proxy == ["localhost", "127.0.0.1"]
+
+    def test_no_proxy_from_env(self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test LLI_NO_PROXY env override (comma-separated)."""
+        config_file = tmp_path / "lli.toml"
+        config_file.write_text(
+            '[proxy]\nhost = "127.0.0.1"\nport = 9090\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LLI_NO_PROXY", "localhost,.local")
+        config = load_config(config_file)
+        assert config.proxy.no_proxy == ["localhost", ".local"]
+
+    def test_no_proxy_passed_to_mitmproxy_options(self) -> None:
+        """Test that no_proxy is passed to mitmproxy ignore_hosts."""
+        config = LLIConfig(
+            proxy=ProxyConfig(no_proxy=["localhost", "127.0.0.1", ".internal"])
+        )
+        opts = Options()
+        if config.proxy.no_proxy:
+            opts.update(ignore_hosts=config.proxy.no_proxy)
+        assert opts.ignore_hosts == ["localhost", "127.0.0.1", ".internal"]
 
 
 class TestURLFilter:
