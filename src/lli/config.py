@@ -66,6 +66,8 @@ class ProxyConfig(BaseModel):
     ssl_insecure: bool = False
     # Hosts to bypass (no interception); passed to mitmproxy ignore_hosts
     no_proxy: list[str] | None = None
+    # Path to PEM file or CA bundle for trusting upstream (e.g. corporate proxy) certificates
+    upstream_ca_cert: str | None = None
 
 
 class StorageConfig(BaseModel):
@@ -180,6 +182,7 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         "LLI_PROXY_PORT": ("proxy", "port"),
         "LLI_OUTPUT_FILE": ("storage", "output_file"),
         "LLI_LOG_LEVEL": ("logging", "level"),
+        "LLI_UPSTREAM_CA_CERT": ("proxy", "upstream_ca_cert"),
     }
 
     for env_var, path in env_mapping.items():

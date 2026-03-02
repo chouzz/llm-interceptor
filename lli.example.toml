@@ -8,6 +8,10 @@ host = "127.0.0.1"
 port = 9090
 # Skip SSL verification for upstream connections (not recommended for production)
 ssl_insecure = false
+# Path to PEM or CA bundle for trusting upstream (e.g. corporate proxy) certificates.
+# Use when capturing traffic behind a corporate proxy; set to your company's root/CA cert path.
+# Also set via env LLI_UPSTREAM_CA_CERT or: lli watch --upstream-ca-cert /path/to/ca.pem
+# upstream_ca_cert = "/path/to/corporate-ca.pem"
 # Hosts to bypass (no interception); also set via env LLI_NO_PROXY (comma-separated).
 # Values are passed to mitmproxy ignore_hosts (regex). Examples: localhost, 127.0.0.1
 # no_proxy = ["localhost", "127.0.0.1"]

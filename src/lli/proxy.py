@@ -13,6 +13,7 @@ import time
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from io import StringIO
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -382,6 +383,19 @@ async def run_watch_proxy(
     # Create watch addon
     addon = WatchAddon(config, watch_manager, url_filter)
 
+    # Upstream CA: validate path when set and warn if ssl_insecure is also on
+    if config.proxy.upstream_ca_cert:
+        ca_path = Path(config.proxy.upstream_ca_cert)
+        if not ca_path.exists():
+            raise FileNotFoundError(
+                f"Upstream CA cert path does not exist: {config.proxy.upstream_ca_cert}"
+            )
+        if config.proxy.ssl_insecure:
+            logger.warning(
+                "Upstream CA cert is set but ssl_insecure=true; "
+                "upstream verification will be skipped, reducing benefit of the CA."
+            )
+
     # Configure mitmproxy options
     opts = Options(
         listen_host=config.proxy.host,
@@ -390,6 +404,10 @@ async def run_watch_proxy(
     )
     if config.proxy.no_proxy:
         opts.update(ignore_hosts=config.proxy.no_proxy)
+    if config.proxy.upstream_ca_cert:
+        opts.update(
+            ssl_verify_upstream_trusted_ca=str(Path(config.proxy.upstream_ca_cert).resolve())
+        )
 
     # Create and run DumpMaster
     # Suppress mitmproxy's default console output by redirecting stdout temporarily
