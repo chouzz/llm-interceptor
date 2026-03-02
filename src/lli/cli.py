@@ -269,6 +269,7 @@ def _show_cert_help() -> None:
 
 def _show_proxy_help() -> None:
     """Display proxy configuration instructions."""
+    config = load_config()
     console.print("[bold cyan]Proxy Configuration Guide[/]")
     console.print("=" * 50)
     console.print()
@@ -276,6 +277,8 @@ def _show_proxy_help() -> None:
     console.print("[bold]Environment Variables (Shell):[/]")
     console.print("  export HTTP_PROXY=http://127.0.0.1:9090")
     console.print("  export HTTPS_PROXY=http://127.0.0.1:9090")
+    if config.proxy.no_proxy:
+        console.print(f"  export NO_PROXY={','.join(config.proxy.no_proxy)}")
     console.print()
 
     console.print("[bold]Claude Code:[/]")
@@ -318,6 +321,10 @@ def _show_config(config_path: str | None) -> None:
     console.print("[bold]Proxy:[/]")
     console.print(f"  Host: {config.proxy.host}")
     console.print(f"  Port: {config.proxy.port}")
+    if config.proxy.no_proxy:
+        console.print(f"  No-proxy: {', '.join(config.proxy.no_proxy)}")
+    else:
+        console.print("  No-proxy: (not set)")
     console.print()
 
     # Filter settings
@@ -626,6 +633,8 @@ def _display_watch_banner(
     else:
         console.print(f"  export HTTP_PROXY=http://127.0.0.1:{port}")
         console.print(f"  export HTTPS_PROXY=http://127.0.0.1:{port}")
+    if config.proxy.no_proxy:
+        console.print(f"  export NO_PROXY={','.join(config.proxy.no_proxy)}")
     console.print("  export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem")
     console.print()
 

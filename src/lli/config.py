@@ -64,6 +64,8 @@ class ProxyConfig(BaseModel):
     port: int = 9090
     # SSL verification mode
     ssl_insecure: bool = False
+    # Hosts to bypass (no interception); passed to mitmproxy ignore_hosts
+    no_proxy: list[str] | None = None
 
 
 class StorageConfig(BaseModel):
@@ -157,8 +159,21 @@ def _load_file(path: Path) -> dict[str, Any]:
         raise ValueError(f"Unsupported config file format: {path.suffix}")
 
 
+def _normalize_no_proxy(value: list[str] | str | None) -> list[str]:
+    """Convert no_proxy to list of strings (comma-split if string)."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [s.strip() for s in value.split(",") if s.strip()]
+    return list(value)
+
+
 def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     """Apply environment variable overrides to config."""
+    # Normalize proxy.no_proxy from file (string -> list)
+    if "proxy" in config and "no_proxy" in config["proxy"]:
+        config["proxy"]["no_proxy"] = _normalize_no_proxy(config["proxy"]["no_proxy"])
+
     # Map environment variables to config paths
     env_mapping = {
         "LLI_PROXY_HOST": ("proxy", "host"),
@@ -171,6 +186,13 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         value = os.environ.get(env_var)
         if value is not None:
             _set_nested(config, path, value)
+
+    # Handle LLI_NO_PROXY (comma-separated -> list)
+    no_proxy_env = os.environ.get("LLI_NO_PROXY")
+    if no_proxy_env is not None:
+        if "proxy" not in config:
+            config["proxy"] = {}
+        config["proxy"]["no_proxy"] = _normalize_no_proxy(no_proxy_env)
 
     # Handle include patterns from env (comma-separated)
     include_patterns = os.environ.get("LLI_INCLUDE_PATTERNS")

@@ -95,6 +95,7 @@ In watch mode:
 export HTTP_PROXY=http://127.0.0.1:9090
 export HTTPS_PROXY=http://127.0.0.1:9090
 export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem
+# Optional: bypass proxy for some hosts (e.g. localhost). Configure in lli.toml as no_proxy or run: lli config --proxy-help
 
 # Run Claude and start your conversation
 claude

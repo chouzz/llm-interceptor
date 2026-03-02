@@ -388,6 +388,8 @@ async def run_watch_proxy(
         listen_port=config.proxy.port,
         ssl_insecure=config.proxy.ssl_insecure,
     )
+    if config.proxy.no_proxy:
+        opts.update(ignore_hosts=config.proxy.no_proxy)
 
     # Create and run DumpMaster
     # Suppress mitmproxy's default console output by redirecting stdout temporarily
