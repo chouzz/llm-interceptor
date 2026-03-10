@@ -79,6 +79,53 @@ class TestConfig:
             opts.update(ignore_hosts=config.proxy.no_proxy)
         assert opts.ignore_hosts == ["localhost", "127.0.0.1", ".internal"]
 
+    def test_upstream_ca_cert_from_toml(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Test loading upstream_ca_cert from config file."""
+        config_file = tmp_path / "lli.toml"
+        # Use path that works in TOML on all platforms (forward slashes)
+        ca_path = (tmp_path / "corporate-ca.pem").as_posix()
+        config_file.write_text(
+            f'[proxy]\nhost = "127.0.0.1"\nport = 9090\nupstream_ca_cert = "{ca_path}"\n',
+            encoding="utf-8",
+        )
+        config = load_config(config_file)
+        assert config.proxy.upstream_ca_cert == ca_path
+
+    def test_upstream_ca_cert_from_env(
+        self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test LLI_UPSTREAM_CA_CERT env override."""
+        config_file = tmp_path / "lli.toml"
+        config_file.write_text('[proxy]\nhost = "127.0.0.1"\nport = 9090\n', encoding="utf-8")
+        monkeypatch.setenv("LLI_UPSTREAM_CA_CERT", "/etc/ssl/corporate-ca.pem")
+        config = load_config(config_file)
+        assert config.proxy.upstream_ca_cert == "/etc/ssl/corporate-ca.pem"
+
+    def test_upstream_ca_cert_passed_to_mitmproxy_options(
+        self, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        """Test that upstream_ca_cert is passed to mitmproxy ssl_verify_upstream_trusted_ca."""
+        ca_file = tmp_path / "ca.pem"
+        ca_file.write_text("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----")
+        config = LLIConfig(
+            proxy=ProxyConfig(upstream_ca_cert=str(ca_file))
+        )
+        opts = Options()
+        if config.proxy.upstream_ca_cert:
+            from pathlib import Path
+            opts.update(
+                ssl_verify_upstream_trusted_ca=str(Path(config.proxy.upstream_ca_cert).resolve())
+            )
+        assert opts.ssl_verify_upstream_trusted_ca == str(ca_file.resolve())
+
+    def test_proxy_config_accepts_ssl_insecure_and_upstream_ca_cert_together(self) -> None:
+        """Test that config layer allows ssl_insecure and upstream_ca_cert both set."""
+        config = LLIConfig(
+            proxy=ProxyConfig(ssl_insecure=True, upstream_ca_cert="/path/to/ca.pem")
+        )
+        assert config.proxy.ssl_insecure is True
+        assert config.proxy.upstream_ca_cert == "/path/to/ca.pem"
+
 
 class TestURLFilter:
     """Test URL filtering."""

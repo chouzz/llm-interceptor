@@ -325,6 +325,10 @@ def _show_config(config_path: str | None) -> None:
         console.print(f"  No-proxy: {', '.join(config.proxy.no_proxy)}")
     else:
         console.print("  No-proxy: (not set)")
+    if config.proxy.upstream_ca_cert:
+        console.print(f"  Upstream CA cert: {config.proxy.upstream_ca_cert}")
+    else:
+        console.print("  Upstream CA cert: (not set)")
     console.print()
 
     # Filter settings
@@ -431,6 +435,12 @@ def stats(file: str) -> None:
     type=int,
     help="Port for the web UI",
 )
+@click.option(
+    "--upstream-ca-cert",
+    type=click.Path(exists=False),
+    default=None,
+    help="Path to PEM or CA bundle for trusting upstream (e.g. corporate proxy) certificates",
+)
 @click.pass_context
 def watch(
     ctx: click.Context,
@@ -442,6 +452,7 @@ def watch(
     ui: bool,
     ui_host: str,
     ui_port: int,
+    upstream_ca_cert: str | None,
 ) -> None:
     """
     Start watch mode for continuous session capture.
@@ -462,6 +473,8 @@ def watch(
         lli watch --port 9090 --output-dir ./my_traces
 
         lli watch --include "*my-custom-api.com*"
+
+        lli watch --upstream-ca-cert /path/to/corporate-ca.pem
 
     Configure your target application to use this proxy (replace the port as needed):
 
@@ -490,6 +503,10 @@ def watch(
         config.proxy.host = "0.0.0.0"
     else:
         config.proxy.host = "127.0.0.1"
+
+    # CLI override for upstream CA cert (explicit --upstream-ca-cert overrides config/env)
+    if upstream_ca_cert is not None:
+        config.proxy.upstream_ca_cert = upstream_ca_cert
 
     # Add custom glob patterns (user-provided via CLI)
     for pattern in include:
@@ -620,6 +637,10 @@ def _display_watch_banner(
     console.print(f"  [cyan]Proxy Port:[/]    {port}")
     console.print(f"  [cyan]Output Dir:[/]    {output_dir}")
     console.print(f"  [cyan]Global Log:[/]    {global_log_path}")
+    if config.proxy.upstream_ca_cert:
+        ca_path = Path(config.proxy.upstream_ca_cert)
+        exists_hint = "[green]exists[/]" if ca_path.exists() else "[yellow]file not found[/]"
+        console.print(f"  [cyan]Upstream CA:[/]   {config.proxy.upstream_ca_cert} ({exists_hint})")
     console.print()
 
     # Display filter rules

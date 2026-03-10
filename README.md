@@ -102,7 +102,29 @@ claude
 # Now start your dialogue - all prompts and responses will be captured
 ```
 
-### 4. Visualize with Web UI
+### 4. (Optional) Corporate network: upstream CA certificate
+
+If you capture traffic **behind a corporate proxy** or on a network where upstream servers use a **company-signed certificate**, you may see TLS errors because the proxy only trusts the system CAs, not your company’s CA. Configure the **upstream** trust CA so LLI (mitmproxy) can verify connections to the corporate proxy or target hosts:
+
+- **Client → LLI:** Your app must trust the **mitmproxy CA** (install `~/.mitmproxy/mitmproxy-ca-cert.pem` as in step 1).
+- **LLI → upstream (corporate proxy / target):** LLI must trust the **company CA**. Set the path to your company’s root or intermediate CA (PEM file):
+
+```bash
+# Option A: CLI
+lli watch --upstream-ca-cert /path/to/corporate-ca.pem
+
+# Option B: config (lli.toml)
+# [proxy]
+# upstream_ca_cert = "/path/to/corporate-ca.pem"
+
+# Option C: environment
+# export LLI_UPSTREAM_CA_CERT=/path/to/corporate-ca.pem
+# lli watch
+```
+
+Use `lli config --show` to confirm the upstream CA path. If the file does not exist at startup, LLI will exit with an error.
+
+### 5. Visualize with Web UI
 
 The web interface should be launched in http://127.0.0.0.1:8000 to analyze captured conversations:
 
@@ -189,6 +211,7 @@ Options:
   -p, --port INTEGER           Proxy server port (default: 9090)
   -o, --output-dir, --log-dir PATH  Root output directory (default: ./traces or OS log dir)
   -i, --include TEXT           Additional URL patterns to include (glob pattern)
+  --upstream-ca-cert PATH      Path to PEM or CA bundle for trusting upstream (e.g. corporate proxy) certificates
   --debug                  Enable debug mode with verbose logging
 ```
 
@@ -203,6 +226,9 @@ lli watch --port 8888 --output-dir ./my_traces
 
 # Include custom API endpoint (glob pattern)
 lli watch --include "*my-custom-api.com*"
+
+# Corporate network: trust company CA so upstream TLS (proxy/target) is verified
+lli watch --upstream-ca-cert /path/to/corporate-ca.pem
 
 # Match all subdomains of a domain
 lli watch --include "*api.example.com*"
@@ -271,6 +297,12 @@ lli watch --include "*my-custom-api.com*"
 ```bash
 export NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem
 ```
+
+### TLS / handshake errors behind corporate proxy
+
+**Problem:** Upstream TLS handshake failures when capturing company URLs (e.g. traffic goes through a corporate proxy that uses a company CA).
+
+**Solution:** Configure the upstream trust CA so LLI can verify the corporate proxy or target server certificate. Use `--upstream-ca-cert`, or set `proxy.upstream_ca_cert` in `lli.toml`, or `LLI_UPSTREAM_CA_CERT`. See the "Corporate network: upstream CA certificate" section above.
 
 ### No Traffic Captured
 
