@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  A cross-platform command-line tool that intercepts, analyzes, and logs communications between AI coding tools/agents (Claude Code, Cursor, Codex, Gemini-CLI, etc.) and their backend LLM APIs.
+  A cross-platform command-line tool that intercepts, analyzes, and logs communications between AI coding tools/agents (Claude Code, Cursor, Codex, OpenCode, etc.) and their backend LLM APIs.
 </p>
 
 ---
