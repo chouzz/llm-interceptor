@@ -44,6 +44,50 @@ jobs:
       - name: Build package
         run: uv build
 
+      - name: Verify UI assets in wheel and sdist
+        run: |
+          python - << 'PY'
+          import pathlib
+          import tarfile
+          import zipfile
+
+          dist_dir = pathlib.Path("dist")
+
+          # Check wheel
+          wheels = sorted(dist_dir.glob("llm_interceptor-*.whl"))
+          if not wheels:
+              raise SystemExit("No wheel found in dist/")
+          wheel_path = wheels[-1]
+          with zipfile.ZipFile(wheel_path) as zf:
+              names = zf.namelist()
+
+          required_files = ["lli/static/index.html"]
+          missing = [f for f in required_files if f not in names]
+          if missing:
+              raise SystemExit(f"Missing required UI files in wheel: {missing}")
+
+          if not any(n.startswith("lli/static/assets/") for n in names):
+              raise SystemExit("No assets found under lli/static/assets/ in wheel")
+
+          print(f"Verified UI assets present in {wheel_path}")
+
+          # Check sdist (optional but safer)
+          sdists = sorted(dist_dir.glob("llm_interceptor-*.tar.gz"))
+          if sdists:
+              sdist_path = sdists[-1]
+              with tarfile.open(sdist_path, "r:gz") as tf:
+                  members = [m.name for m in tf.getmembers() if m.isfile()]
+
+              # sdist will usually have a top-level directory prefix
+              if not any(name.endswith("src/lli/static/index.html") for name in members):
+                  raise SystemExit("sdist does not contain src/lli/static/index.html")
+
+              if not any("src/lli/static/assets/" in name for name in members):
+                  raise SystemExit("sdist does not contain src/lli/static/assets/")
+
+              print(f"Verified UI assets present in {sdist_path}")
+          PY
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

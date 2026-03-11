@@ -78,6 +78,32 @@ jobs:
       - name: Build package
         run: uv build
 
+      - name: Verify UI assets in wheel
+        run: |
+          python - << 'PY'
+          import pathlib
+          import zipfile
+
+          dist_dir = pathlib.Path("dist")
+          wheels = sorted(dist_dir.glob("llm_interceptor-*.whl"))
+          if not wheels:
+              raise SystemExit("No wheel found in dist/")
+
+          wheel_path = wheels[-1]
+          with zipfile.ZipFile(wheel_path) as zf:
+              names = zf.namelist()
+
+          required_files = ["lli/static/index.html"]
+          missing = [f for f in required_files if f not in names]
+          if missing:
+              raise SystemExit(f"Missing required UI files in wheel: {missing}")
+
+          if not any(n.startswith("lli/static/assets/") for n in names):
+              raise SystemExit("No assets found under lli/static/assets/ in wheel")
+
+          print(f"Verified UI assets present in {wheel_path}")
+          PY
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

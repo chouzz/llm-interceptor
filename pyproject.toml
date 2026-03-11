@@ -60,7 +60,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lli", "src/llm_interceptor"]
-artifacts = ["src/lli/static/**/*"]
+artifacts = ["src/lli/static/**"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/lli/static/**"]
 
 [tool.ruff]
 line-length = 100
