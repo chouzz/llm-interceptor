@@ -58,20 +58,21 @@ Issues = "https://github.com/chouzz/llm-interceptor/issues"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.sources]
-# Use standard src/ layout and expose packages at the root of the wheel
-src = ""
+[tool.hatch.build]
+artifacts = [
+    "src/lli/static/*",
+    "src/lli/static/**/*"
+]
 
 [tool.hatch.build.targets.wheel]
 # Explicitly include both the core package and the CLI helper package
-packages = ["lli", "llm_interceptor"]
-artifacts = ["src/lli/static/**"]
+packages = ["src/lli", "src/llm_interceptor"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
 
 [tool.hatch.build.targets.sdist]
 include = ["src/lli/**", "src/llm_interceptor/**", "src/lli/static/**"]
-
-[tool.hatch.build.targets.sdist.force-include]
-"src/lli/static" = "src/lli/static"
 
 [tool.ruff]
 line-length = 100
