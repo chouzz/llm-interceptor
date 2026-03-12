@@ -5,6 +5,10 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      ref:
+        description: 'Git ref to publish from (for example: refs/tags/v2.4.1)'
+        required: false
+        type: string
       test_pypi:
         description: 'Publish to Test PyPI instead of PyPI'
         required: false
@@ -17,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.ref || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
