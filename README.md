@@ -26,16 +26,16 @@
 
 ## 📦 Installation
 
+### Using uv (recommended)
+
+```bash
+uv tool install llm-interceptor
+```
+
 ### Using pip
 
 ```bash
 pip install llm-interceptor
-```
-
-### Using uv (recommended)
-
-```bash
-uv add llm-interceptor
 ```
 
 ### From source
@@ -75,12 +75,18 @@ sudo update-ca-certificates
 ```
 
 **Windows:**
-Navigate to `%USERPROFILE%\.mitmproxy\`, double-click `mitmproxy-ca-cert.pem` → Install Certificate → Local Machine → Trusted Root Certification Authorities
+Navigate to `%USERPROFILE%\.mitmproxy\`. Double-click `mitmproxy-ca-cert.p12` (or `mitmproxy-ca-cert.cer`) to open the certificate import wizard → Install Certificate → Local Machine → place in **Trusted Root Certification Authorities** → Finish.
 
 ### 2. Start Watch Mode and Record Sessions
 
 ```bash
 lli watch
+```
+
+If you need to capture traffic to a **custom or self-hosted API** , use `--include` with a glob pattern, for example:
+
+```bash
+lli watch --include "*api.example.com*"
 ```
 
 In watch mode:
@@ -113,13 +119,6 @@ If you capture traffic **behind a corporate proxy** or on a network where upstre
 # Option A: CLI
 lli watch --upstream-ca-cert /path/to/corporate-ca.pem
 
-# Option B: config (lli.toml)
-# [proxy]
-# upstream_ca_cert = "/path/to/corporate-ca.pem"
-
-# Option C: environment
-# export LLI_UPSTREAM_CA_CERT=/path/to/corporate-ca.pem
-# lli watch
 ```
 
 Use `lli config --show` to confirm the upstream CA path. If the file does not exist at startup, LLI will exit with an error.
