@@ -78,3 +78,8 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+changelog_file = "CHANGELOG.md"
+commit_version_number = true
