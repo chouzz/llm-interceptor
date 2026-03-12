@@ -39,7 +39,8 @@ def build_ui(watch: bool = False):
             check=True,
             shell=use_shell,
         )
-        print("✅ UI built successfully.")
+        # Avoid emoji here to prevent UnicodeEncodeError on GBK consoles (e.g. Windows)
+        print("UI built successfully.")
 
 
 if __name__ == "__main__":

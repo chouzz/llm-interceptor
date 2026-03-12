@@ -44,7 +44,7 @@ jobs:
       - name: Build package
         run: uv build
 
-      - name: Verify UI assets in wheel and sdist
+      - name: Verify packaged Python modules and UI assets
         run: |
           python - << 'PY'
           import pathlib
@@ -61,6 +61,17 @@ jobs:
           with zipfile.ZipFile(wheel_path) as zf:
               names = zf.namelist()
 
+          # Ensure core Python packages are present
+          required_packages = [
+              "lli/__init__.py",
+              "lli/cli.py",
+              "llm_interceptor/__init__.py",
+          ]
+          missing_pkgs = [f for f in required_packages if f not in names]
+          if missing_pkgs:
+              raise SystemExit(f"Missing required Python modules in wheel: {missing_pkgs}")
+
+          # Ensure UI assets are present
           required_files = ["lli/static/index.html"]
           missing = [f for f in required_files if f not in names]
           if missing:
