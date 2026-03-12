@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-03-12
+
+### Added
+
+- **Release changelog automation** - Support auto-updating `CHANGELOG.md` when releasing a new version
+
+### Changed
+
+- **Release pipeline** - Improved PyPI release workflow (with follow-up revert to keep the workflow stable)
+- **Docs** - Improved installation instructions in README
+
+## [2.5.1] - 2026-03-11
+
+### Fixed
+
+- **pip install Web UI** - Fixed Web UI not working when installing LLI via `pip`
+- **UI screenshot asset name** - Renamed `cci-ui-screenshot.png` to `lli-ui-screenshot.png`
+
+## [2.5.0] - 2026-03-10
+
+### Added
+
+- **Tool call timeline** - Implemented tool call timeline visualization in ExchangeDetailsPane
+- **Upstream CA certificates** - Added support for configuring upstream CA certificate(s)
+- **No-proxy URL ignore** - Added `no_proxy` support to ignore selected URLs from proxying
+
+### Changed
+
+- **Release auth** - Added `GH_TOKEN` environment variable for releases
+
 ## [2.4.0] - 2026-02-13
 
 ### Added
