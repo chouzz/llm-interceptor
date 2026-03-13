@@ -8,11 +8,13 @@ merge, split, config, and stats.
 from __future__ import annotations
 
 import asyncio
+import re
 import socket
 import sys
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+from urllib.parse import urlparse
 
 import click
 from rich.panel import Panel
@@ -412,6 +414,15 @@ def stats(file: str) -> None:
     help="Additional URL patterns to include (glob pattern, e.g. '*api.example.com*')",
 )
 @click.option(
+    "--exclude",
+    "-x",
+    multiple=True,
+    help=(
+        "URL patterns to exclude (glob). Excluded URLs won't be captured and will also be "
+        "bypassed via mitmproxy ignore_hosts (best-effort)."
+    ),
+)
+@click.option(
     "--debug",
     is_flag=True,
     help="Enable debug mode with verbose logging",
@@ -448,6 +459,7 @@ def watch(
     lan: bool,
     output_dir: str,
     include: tuple[str, ...],
+    exclude: tuple[str, ...],
     debug: bool,
     ui: bool,
     ui_host: str,
@@ -473,6 +485,8 @@ def watch(
         lli watch --port 9090 --output-dir ./my_traces
 
         lli watch --include "*my-custom-api.com*"
+
+        lli watch --exclude "*example.com/health*" --exclude "*example.com/metrics*"
 
         lli watch --upstream-ca-cert /path/to/corporate-ca.pem
 
@@ -511,6 +525,15 @@ def watch(
     # Add custom glob patterns (user-provided via CLI)
     for pattern in include:
         config.filter.include_globs.append(pattern)
+
+    # Exclude patterns provided via CLI:
+    # - Always exclude from capture (filter.exclude_globs)
+    # - Also bypass interception via mitmproxy ignore_hosts (proxy.no_proxy)
+    #   so these requests don't get MITM'd.
+    for pattern in exclude:
+        config.filter.exclude_globs.append(pattern)
+        config.proxy.no_proxy = config.proxy.no_proxy or []
+        config.proxy.no_proxy.append(_glob_to_regex(pattern))
 
     if debug:
         config.logging.level = "DEBUG"
@@ -692,6 +715,34 @@ def _display_filter_rules(config: LLIConfig) -> None:
             console.print(f"    [bold red]•[/] {pattern}")
 
     console.print()
+
+
+def _glob_to_regex(glob_pattern: str) -> str:
+    """
+    Convert a glob-ish URL/host pattern to a regex string.
+
+    Used for mapping `--exclude` patterns to mitmproxy `ignore_hosts`, which expects regex.
+    mitmproxy's `ignore_hosts` is evaluated against the request host in most setups,
+    so we try to derive a host-oriented regex even if the user provides a full URL glob.
+    """
+    # Heuristic: prefer matching host portion if we can derive it.
+    raw = glob_pattern.strip()
+    candidate = raw
+
+    # If it looks like a URL, parse it and use netloc.
+    if "://" in raw:
+        parsed = urlparse(raw.replace("*", "x").replace("?", "x"))
+        if parsed.netloc:
+            candidate = parsed.netloc
+    else:
+        # If it's a URL-ish glob without scheme, drop any path/query fragments.
+        candidate = raw.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+
+    # Escape regex meta, then replace glob wildcards.
+    # Note: we do NOT anchor with ^/$ so substrings match.
+    s = re.escape(candidate)
+    s = s.replace(r"\*", ".*").replace(r"\?", ".")
+    return s
 
 
 def _run_watch_loop(watch_manager: WatchManager, stop_event: threading.Event) -> None:
