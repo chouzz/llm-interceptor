@@ -25,7 +25,7 @@ export function useAnnotations(options: { apiBase: string }) {
   const fetchAllAnnotations = useCallback(
     async (sessionIds: string[]) => {
       const results: Record<string, AnnotationData> = {};
-      
+
       // Fetch all annotations in parallel
       const fetchPromises = sessionIds.map(async (sessionId) => {
         try {
@@ -43,7 +43,7 @@ export function useAnnotations(options: { apiBase: string }) {
       });
 
       await Promise.all(fetchPromises);
-      
+
       // Update state with all fetched annotations
       setAnnotations((prev) => ({ ...prev, ...results }));
       return results;

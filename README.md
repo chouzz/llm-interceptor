@@ -43,7 +43,25 @@ pip install llm-interceptor
 ```bash
 git clone https://github.com/chouzz/llm-interceptor.git
 cd llm-interceptor
-uv sync
+uv sync --dev
+uv run lli-dev-setup
+```
+
+### Development setup
+
+Git does not copy hooks from `.git/hooks` when you clone a repository, so each
+new clone must install the project's `pre-commit` hook once:
+
+```bash
+uv sync --dev
+uv run lli-dev-setup
+```
+
+If you prefer `pip`:
+
+```bash
+pip install -e .[dev]
+lli-dev-setup
 ```
 
 ## 🚀 Quick Start
@@ -319,6 +337,8 @@ MIT License
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+Before committing from a fresh clone, run `lli-dev-setup` once to install the
+repository's `pre-commit` hook locally.
 
 ## 📞 Support
 

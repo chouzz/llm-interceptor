@@ -1,11 +1,10 @@
 """Basic tests for LLM Interceptor."""
 
 import pytest
-
 from mitmproxy.options import Options
 
 from lli import __version__
-from lli.config import FilterConfig, LLIConfig, load_config, ProxyConfig
+from lli.config import FilterConfig, LLIConfig, ProxyConfig, load_config
 from lli.filters import URLFilter
 from lli.models import RecordType, RequestRecord
 from lli.storage import JSONLWriter
@@ -49,16 +48,20 @@ class TestConfig:
         """Test loading no_proxy from config file."""
         config_file = tmp_path / "lli.toml"
         config_file.write_text(
-            '[proxy]\n'
+            "[proxy]\n"
             'host = "127.0.0.1"\n'
-            'port = 9090\n'
+            "port = 9090\n"
             'no_proxy = ["localhost", "127.0.0.1"]\n',
             encoding="utf-8",
         )
         config = load_config(config_file)
         assert config.proxy.no_proxy == ["localhost", "127.0.0.1"]
 
-    def test_no_proxy_from_env(self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_proxy_from_env(
+        self,
+        tmp_path: pytest.TempPathFactory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """Test LLI_NO_PROXY env override (comma-separated)."""
         config_file = tmp_path / "lli.toml"
         config_file.write_text(
@@ -71,9 +74,7 @@ class TestConfig:
 
     def test_no_proxy_passed_to_mitmproxy_options(self) -> None:
         """Test that no_proxy is passed to mitmproxy ignore_hosts."""
-        config = LLIConfig(
-            proxy=ProxyConfig(no_proxy=["localhost", "127.0.0.1", ".internal"])
-        )
+        config = LLIConfig(proxy=ProxyConfig(no_proxy=["localhost", "127.0.0.1", ".internal"]))
         opts = Options()
         if config.proxy.no_proxy:
             opts.update(ignore_hosts=config.proxy.no_proxy)
@@ -107,12 +108,11 @@ class TestConfig:
         """Test that upstream_ca_cert is passed to mitmproxy ssl_verify_upstream_trusted_ca."""
         ca_file = tmp_path / "ca.pem"
         ca_file.write_text("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----")
-        config = LLIConfig(
-            proxy=ProxyConfig(upstream_ca_cert=str(ca_file))
-        )
+        config = LLIConfig(proxy=ProxyConfig(upstream_ca_cert=str(ca_file)))
         opts = Options()
         if config.proxy.upstream_ca_cert:
             from pathlib import Path
+
             opts.update(
                 ssl_verify_upstream_trusted_ca=str(Path(config.proxy.upstream_ca_cert).resolve())
             )
@@ -120,9 +120,7 @@ class TestConfig:
 
     def test_proxy_config_accepts_ssl_insecure_and_upstream_ca_cert_together(self) -> None:
         """Test that config layer allows ssl_insecure and upstream_ca_cert both set."""
-        config = LLIConfig(
-            proxy=ProxyConfig(ssl_insecure=True, upstream_ca_cert="/path/to/ca.pem")
-        )
+        config = LLIConfig(proxy=ProxyConfig(ssl_insecure=True, upstream_ca_cert="/path/to/ca.pem"))
         assert config.proxy.ssl_insecure is True
         assert config.proxy.upstream_ca_cert == "/path/to/ca.pem"
 
