@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Session, SessionSummary } from '../types';
+import type { Session, SessionSummary, WatchStatus } from '../types';
 import { normalizeSession } from '../utils';
 
 export function useSessions(options: { apiBase: string; pollMs?: number }) {
@@ -9,10 +9,25 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
   const [sessionList, setSessionList] = useState<SessionSummary[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [isLoadingList, setIsLoadingList] = useState(true);
+  const [watchStatus, setWatchStatus] = useState<WatchStatus | null>(null);
 
   // Selection State
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedExchangeId, setSelectedExchangeId] = useState<string | null>(null);
+
+  const fetchWatchStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/status`);
+      if (res.ok) {
+        const data = (await res.json()) as WatchStatus;
+        setWatchStatus(data);
+        return data;
+      }
+    } catch (error) {
+      console.error('Failed to fetch watch status', error);
+    }
+    return null;
+  }, [apiBase]);
 
   const fetchSessionList = useCallback(async () => {
     try {
@@ -72,14 +87,17 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
   // Poll for session list updates
   useEffect(() => {
     const load = async () => {
-      await fetchSessionList();
+      await Promise.all([fetchSessionList(), fetchWatchStatus()]);
       setIsLoadingList(false);
     };
 
     load();
-    const interval = setInterval(fetchSessionList, pollMs);
+    const interval = setInterval(() => {
+      void fetchSessionList();
+      void fetchWatchStatus();
+    }, pollMs);
     return () => clearInterval(interval);
-  }, [fetchSessionList, pollMs]);
+  }, [fetchSessionList, fetchWatchStatus, pollMs]);
 
   // When selectedSessionId changes, fetch details
   useEffect(() => {
@@ -111,6 +129,7 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
     sessionList,
     currentSession,
     isLoadingList,
+    watchStatus,
     selectedSessionId,
     setSelectedSessionId,
     selectedExchangeId,

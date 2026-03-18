@@ -47,6 +47,15 @@ class AnnotationData(BaseModel):
     requests: dict[str, str] = {}  # key: sequenceId (e.g., "001"), value: note
 
 
+class WatchStatus(BaseModel):
+    """High-level watch-mode status for the UI."""
+
+    output_dir: str
+    has_sessions: bool
+    active: bool
+    session_id: str | None = None
+
+
 class ServerState:
     """Shared state for the API server."""
 
@@ -69,6 +78,22 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
     )
 
     # API Endpoints
+
+    @app.get("/api/status", response_model=WatchStatus)
+    async def get_status():
+        """Get watch-mode status metadata for the UI."""
+        traces_dir = state.watch_manager.output_dir
+        has_sessions = False
+        if traces_dir.exists():
+            has_sessions = any(p.is_dir() for p in traces_dir.glob("session_*"))
+
+        current_session = state.watch_manager.current_session
+        return WatchStatus(
+            output_dir=str(traces_dir),
+            has_sessions=has_sessions,
+            active=current_session is not None,
+            session_id=current_session.session_id if current_session else None,
+        )
 
     @app.get("/api/sessions", response_model=list[SessionSummary])
     async def list_sessions():

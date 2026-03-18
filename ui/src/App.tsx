@@ -31,6 +31,7 @@ const App: React.FC = () => {
     sessionList,
     currentSession,
     isLoadingList,
+    watchStatus,
     selectedSessionId,
     setSelectedSessionId,
     selectedExchangeId,
@@ -94,7 +95,14 @@ const App: React.FC = () => {
       } h-screen w-full flex bg-gray-50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-200 overflow-hidden font-sans selection:bg-blue-200 dark:selection:bg-blue-500/30 transition-colors duration-200`}
     >
       {sessionList.length === 0 ? (
-        <EmptyState isDarkMode={isDarkMode} isLoadingList={isLoadingList} onToggleTheme={toggleTheme} />
+        <EmptyState
+          isDarkMode={isDarkMode}
+          isLoadingList={isLoadingList}
+          onToggleTheme={toggleTheme}
+          outputDir={watchStatus?.output_dir ?? null}
+          isRecording={watchStatus?.active ?? false}
+          recordingSessionId={watchStatus?.session_id ?? null}
+        />
       ) : (
         <>
           <SessionsSidebar

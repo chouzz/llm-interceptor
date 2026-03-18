@@ -5,7 +5,10 @@ export const EmptyState: React.FC<{
   isDarkMode: boolean;
   isLoadingList: boolean;
   onToggleTheme: () => void;
-}> = ({ isDarkMode, isLoadingList, onToggleTheme }) => {
+  outputDir: string | null;
+  isRecording: boolean;
+  recordingSessionId: string | null;
+}> = ({ isDarkMode, isLoadingList, onToggleTheme, outputDir, isRecording, recordingSessionId }) => {
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center relative overflow-hidden bg-gray-50 dark:bg-[#0f172a]">
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none"></div>
@@ -30,10 +33,43 @@ export const EmptyState: React.FC<{
           <span>Scanning for sessions...</span>
         </div>
       ) : (
-        <p className="max-w-md text-slate-600 dark:text-slate-400 mb-10 leading-relaxed text-lg">
-          No sessions found in the traces directory. <br />
-          Run <code>lli watch</code> to capture new sessions.
-        </p>
+        <div className="max-w-2xl text-slate-600 dark:text-slate-400 mb-10 leading-relaxed text-lg">
+          <p className="mb-4">
+            {isRecording ? (
+              <>
+                No completed sessions yet. A recording is currently in progress
+                {recordingSessionId ? (
+                  <>
+                    {' '}
+                    (<code>{recordingSessionId}</code>)
+                  </>
+                ) : null}
+                .
+              </>
+            ) : (
+              <>No sessions yet.</>
+            )}
+          </p>
+
+          {outputDir ? (
+            <p className="mb-4">
+              Output dir: <code className="break-all">{outputDir}</code>
+            </p>
+          ) : null}
+
+          <div className="text-left inline-block rounded-2xl bg-white/80 dark:bg-slate-800/30 border border-gray-200 dark:border-slate-700/50 px-5 py-4 shadow-sm backdrop-blur-sm">
+            <div className="font-semibold text-slate-800 dark:text-slate-200 mb-2">How to capture</div>
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>
+                In the terminal running <code>lli watch</code>, press <code>Enter</code> to start capturing.
+              </li>
+              <li>Start your conversation in your tool/app (with proxy env vars configured).</li>
+              <li>
+                Press <code>Enter</code> again to stop and process the session.
+              </li>
+            </ol>
+          </div>
+        </div>
       )}
     </div>
   );

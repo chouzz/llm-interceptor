@@ -14,6 +14,13 @@ export interface AnnotationData {
   requests: Record<string, string>; // key: sequenceId (e.g., "001"), value: note
 }
 
+export interface WatchStatus {
+  output_dir: string;
+  has_sessions: boolean;
+  active: boolean;
+  session_id: string | null;
+}
+
 export interface LogRecord {
   type: "request" | "response";
   request_id: string;
