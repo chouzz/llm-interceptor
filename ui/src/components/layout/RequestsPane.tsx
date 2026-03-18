@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, memo } from 'react';
 import {
+  AlertTriangle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -12,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import type { AnnotationData, NormalizedExchange } from '../../types';
-import { formatTimestamp } from '../../utils';
+import { formatDuration, formatTimestamp } from '../../utils';
 import { stringToColor } from '../../utils/ui';
 import { Tooltip } from '../common/Tooltip';
 
@@ -70,6 +71,17 @@ export const RequestsPane: React.FC<{
 
   // Memoize computed values
   const requestCount = useMemo(() => filteredExchanges.length, [filteredExchanges.length]);
+  const totalLatencyMs = useMemo(
+    () => filteredExchanges.reduce((sum, exchange) => sum + Math.max(exchange.latencyMs || 0, 0), 0),
+    [filteredExchanges]
+  );
+  const failedRequestCount = useMemo(
+    () =>
+      filteredExchanges.filter(
+        (exchange) => !exchange.rawResponse || exchange.statusCode < 200 || exchange.statusCode >= 400
+      ).length,
+    [filteredExchanges]
+  );
 
   // Memoize the rendered request items
   const renderedRequests = useMemo(() => {
@@ -121,26 +133,40 @@ export const RequestsPane: React.FC<{
     >
       {/* Requests Header */}
       <div
-        className={`p-4 border-b border-gray-200 dark:border-slate-800 h-[57px] flex items-center bg-white dark:bg-[#0f172a] ${
+        className={`p-4 border-b border-gray-200 dark:border-slate-800 flex items-center bg-white dark:bg-[#0f172a] ${
           isCollapsed ? 'justify-center' : 'justify-between'
         }`}
       >
         {!isCollapsed && (
-          <div className="flex flex-col overflow-hidden">
+          <div className="flex flex-col gap-2 overflow-hidden">
             <h2 className="font-bold text-xs tracking-wide text-slate-500 dark:text-slate-400 uppercase">
               Requests
             </h2>
             <div className="text-xs text-slate-600 dark:text-slate-300 truncate font-medium">
               {currentSessionName || 'Select a session'}
             </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full border border-gray-200 dark:border-slate-700 shadow-sm">
+                {requestCount} requests
+              </span>
+              <span className="text-[10px] bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full border border-gray-200 dark:border-slate-700 shadow-sm flex items-center gap-1">
+                <Clock size={10} />
+                {formatDuration(totalLatencyMs)}
+              </span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full border shadow-sm flex items-center gap-1 ${
+                  failedRequestCount > 0
+                    ? 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50'
+                    : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-700'
+                }`}
+              >
+                <AlertTriangle size={10} />
+                {failedRequestCount} failed
+              </span>
+            </div>
           </div>
         )}
         <div className="flex items-center gap-2">
-          {!isCollapsed && (
-            <span className="text-[10px] bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full border border-gray-200 dark:border-slate-700 shadow-sm">
-              {requestCount}
-            </span>
-          )}
           <button
             onClick={handleToggleCollapse}
             className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 transition-colors"

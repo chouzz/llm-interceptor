@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session, SessionSummary, WatchStatus } from '../types';
 import { normalizeSession } from '../utils';
 
@@ -10,6 +10,8 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [watchStatus, setWatchStatus] = useState<WatchStatus | null>(null);
+  const sessionCacheRef = useRef<Record<string, Session>>({});
+  const activeFetchControllerRef = useRef<AbortController | null>(null);
 
   // Selection State
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -44,22 +46,46 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
   }, [apiBase]);
 
   const fetchSessionDetails = useCallback(async (sessionId: string) => {
+    const cachedSession = sessionCacheRef.current[sessionId];
+    if (cachedSession) {
+      setCurrentSession(cachedSession);
+      if (cachedSession.exchanges.length > 0) {
+        setSelectedExchangeId(cachedSession.exchanges[cachedSession.exchanges.length - 1].id);
+      }
+      return cachedSession;
+    }
+
+    activeFetchControllerRef.current?.abort();
+    const controller = new AbortController();
+    activeFetchControllerRef.current = controller;
+
     try {
-      const res = await fetch(`${apiBase}/api/sessions/${sessionId}`);
+      const res = await fetch(`${apiBase}/api/sessions/${sessionId}`, { signal: controller.signal });
       if (res.ok) {
         const data = await res.json();
         // Normalize the API data to UI structure
         const session = normalizeSession(data);
+        sessionCacheRef.current[sessionId] = session;
+
+        if (controller.signal.aborted) {
+          return null;
+        }
+
         setCurrentSession(session);
 
         // Auto-select last exchange (most recent)
         if (session.exchanges.length > 0) {
           setSelectedExchangeId(session.exchanges[session.exchanges.length - 1].id);
         }
+        return session;
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return null;
+      }
       console.error('Failed to fetch session details', error);
     }
+    return null;
   }, [apiBase]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
@@ -70,6 +96,7 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
       }
 
       setSessionList((prev) => prev.filter((session) => session.id !== sessionId));
+      delete sessionCacheRef.current[sessionId];
 
       const isDeletingSelectedSession = selectedSessionId === sessionId;
       setSelectedSessionId((prevSelected) => (prevSelected === sessionId ? null : prevSelected));
@@ -101,8 +128,14 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
 
   // When selectedSessionId changes, fetch details
   useEffect(() => {
+    return () => {
+      activeFetchControllerRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
     if (selectedSessionId) {
-      fetchSessionDetails(selectedSessionId);
+      void fetchSessionDetails(selectedSessionId);
     } else {
       setCurrentSession(null);
     }

@@ -39,23 +39,9 @@ const App: React.FC = () => {
     deleteSession,
   } = useSessions({ apiBase: API_BASE, pollMs: 2000 });
 
-  const { annotations, setAnnotations, ensureLoaded, fetchAllAnnotations, updateSessionNote, updateRequestNote } = useAnnotations({
+  const { annotations, setAnnotations, ensureLoaded, updateSessionNote, updateRequestNote } = useAnnotations({
     apiBase: API_BASE,
   });
-
-  // Preload annotations for all sessions when session list changes
-  useEffect(() => {
-    if (sessionList.length === 0) return;
-
-    // Find sessions that haven't been loaded yet
-    const unloadedSessionIds = sessionList
-      .map((s) => s.id)
-      .filter((id) => !(id in annotations));
-
-    if (unloadedSessionIds.length > 0) {
-      void fetchAllAnnotations(unloadedSessionIds);
-    }
-  }, [sessionList, annotations, fetchAllAnnotations]);
 
   // Ensure annotations are loaded when session changes (fallback)
   useEffect(() => {

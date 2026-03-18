@@ -6,6 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clock,
   FolderOpen,
   MessageCircle,
   Moon,
@@ -14,7 +15,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { AnnotationData, SessionSummary } from '../../types';
-import { formatTimestamp } from '../../utils';
+import { formatDuration, formatTimestamp } from '../../utils';
 import { Tooltip } from '../common/Tooltip';
 
 export const SessionsSidebar: React.FC<{
@@ -302,8 +303,12 @@ const SessionItem = React.memo<{
                   {session.id.replace('session_', '')}
                 </span>
               </div>
-              <div className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
-                <span>{session.request_count}</span>
+              <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                <span>{session.request_count} req</span>
+                <span className="flex items-center gap-1">
+                  <Clock size={10} />
+                  {formatDuration(session.duration_ms)}
+                </span>
                 {hasNote && !isEditing && <MessageCircle size={10} className="text-amber-500" />}
               </div>
             </div>

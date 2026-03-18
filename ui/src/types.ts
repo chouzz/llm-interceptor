@@ -6,6 +6,7 @@ export interface SessionSummary {
   timestamp: string;
   request_count: number;
   total_latency_ms: number;
+  duration_ms: number;
   total_tokens: number;
 }
 

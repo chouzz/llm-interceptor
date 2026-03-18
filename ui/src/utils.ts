@@ -383,3 +383,26 @@ export const formatTimestamp = (iso: string) => {
     return iso;
   }
 };
+
+export const formatDuration = (ms: number) => {
+  if (!Number.isFinite(ms) || ms <= 0) return '0s';
+
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`;
+  }
+
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(totalSeconds >= 10 ? 1 : 2)}s`;
+  }
+
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m ${seconds}s`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes}m`;
+};

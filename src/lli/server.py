@@ -8,7 +8,7 @@ import json
 import logging
 import mimetypes
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -37,6 +37,7 @@ class SessionSummary(BaseModel):
     timestamp: datetime
     request_count: int
     total_latency_ms: float
+    duration_ms: float
     total_tokens: int
 
 
@@ -61,6 +62,85 @@ class ServerState:
 
     def __init__(self, watch_manager: WatchManager):
         self.watch_manager = watch_manager
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    """Parse ISO timestamps from session files into naive UTC datetimes."""
+    if not isinstance(value, str) or not value:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _parse_session_dir_timestamp(path: Path) -> datetime:
+    """Best-effort timestamp from the session directory name."""
+    try:
+        return datetime.strptime(path.name.replace("session_", ""), "%Y%m%d_%H%M%S")
+    except ValueError:
+        return datetime.now()
+
+
+def _summarize_session(path: Path) -> SessionSummary:
+    """Build session summary stats from captured request/response files."""
+    fallback_timestamp = _parse_session_dir_timestamp(path)
+    request_timestamps: list[datetime] = []
+    response_timestamps: list[datetime] = []
+    request_count = 0
+    total_latency_ms = 0.0
+
+    for file_path in sorted(path.glob("*.json")):
+        if file_path.name == "annotations.json":
+            continue
+
+        parts = file_path.stem.split("_")
+        if len(parts) < 2:
+            continue
+
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.warning("Failed to read session file %s: %s", file_path, e)
+            continue
+
+        if not isinstance(data, dict):
+            continue
+
+        msg_type = parts[1]
+        timestamp = _parse_timestamp(data.get("timestamp"))
+
+        if msg_type == "request":
+            request_count += 1
+            if timestamp is not None:
+                request_timestamps.append(timestamp)
+        elif msg_type == "response":
+            if timestamp is not None:
+                response_timestamps.append(timestamp)
+
+            latency_ms = data.get("latency_ms")
+            if isinstance(latency_ms, int | float):
+                total_latency_ms += float(latency_ms)
+
+    started_at = min(request_timestamps) if request_timestamps else fallback_timestamp
+    ended_candidates = response_timestamps or request_timestamps
+    ended_at = max(ended_candidates) if ended_candidates else started_at
+    duration_ms = max((ended_at - started_at).total_seconds() * 1000, 0.0)
+
+    return SessionSummary(
+        id=path.name,
+        timestamp=started_at,
+        request_count=request_count,
+        total_latency_ms=total_latency_ms,
+        duration_ms=duration_ms,
+        total_tokens=0,
+    )
 
 
 def create_app(watch_manager: WatchManager) -> FastAPI:
@@ -113,27 +193,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
         )
 
         for path in session_dirs:
-            # Basic info from directory name
-            try:
-                # Format: session_YYYYMMDD_HHMMSS
-                ts_str = path.name.replace("session_", "")
-                timestamp = datetime.strptime(ts_str, "%Y%m%d_%H%M%S")
-            except ValueError:
-                timestamp = datetime.now()
-
-            # Count requests (rough estimate from file count / 2)
-            file_count = len(list(path.glob("*.json")))
-            req_count = file_count // 2
-
-            sessions.append(
-                SessionSummary(
-                    id=path.name,
-                    timestamp=timestamp,
-                    request_count=req_count,
-                    total_latency_ms=0,  # TODO: Calculate from summary file if available
-                    total_tokens=0,  # TODO: Calculate from summary file if available
-                )
-            )
+            sessions.append(_summarize_session(path))
 
         return sessions
 
