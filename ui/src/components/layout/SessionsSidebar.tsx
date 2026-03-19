@@ -30,6 +30,8 @@ export const SessionsSidebar: React.FC<{
 
   isDarkMode: boolean;
   onToggleTheme: () => void;
+  isNewestFirst: boolean;
+  onToggleSortOrder: () => void;
 
   annotations: Record<string, AnnotationData>;
   onUpdateSessionNote: (sessionId: string, note: string) => void;
@@ -44,21 +46,18 @@ export const SessionsSidebar: React.FC<{
   onSelectSession,
   isDarkMode,
   onToggleTheme,
+  isNewestFirst,
+  onToggleSortOrder,
   annotations,
   onUpdateSessionNote,
   onDeleteSession,
 }) => {
   const [editingSessionNote, setEditingSessionNote] = useState<string | null>(null);
-  const [isNewestFirst, setIsNewestFirst] = useState(false);
 
   // Memoize callback functions
   const handleToggleCollapse = useCallback(() => {
     setIsCollapsed(!isCollapsed);
   }, [isCollapsed, setIsCollapsed]);
-
-  const handleToggleSortOrder = useCallback(() => {
-    setIsNewestFirst((prev) => !prev);
-  }, []);
 
   // Memoize rendered sessions
   const renderedSessions = useMemo(() => {
@@ -131,7 +130,7 @@ export const SessionsSidebar: React.FC<{
           </button>
           {!isCollapsed && (
             <button
-              onClick={handleToggleSortOrder}
+              onClick={onToggleSortOrder}
               className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 transition-colors"
               title={isNewestFirst ? 'Sort: newest first' : 'Sort: oldest first'}
               type="button"

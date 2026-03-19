@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Session, SessionSummary, WatchStatus } from '../types';
 import { normalizeSession } from '../utils';
 
-export function useSessions(options: { apiBase: string; pollMs?: number }) {
-  const { apiBase, pollMs = 2000 } = options;
+export function useSessions(options: { apiBase: string; pollMs?: number; isNewestFirst?: boolean }) {
+  const { apiBase, pollMs = 2000, isNewestFirst = false } = options;
 
   // Data State
   const [sessionList, setSessionList] = useState<SessionSummary[]>([]);
@@ -108,7 +108,8 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
     }
   }, [fetchSessionDetails, selectedSessionId]);
 
-  // Auto-select the newest session once the list loads, and handle removed sessions
+  // Auto-select a session once the list loads, and handle removed sessions.
+  // Selection follows UI sort preference when no current valid selection exists.
   useEffect(() => {
     if (sessionList.length === 0) {
       if (selectedSessionId !== null) {
@@ -121,9 +122,10 @@ export function useSessions(options: { apiBase: string; pollMs?: number }) {
     const hasSelection =
       selectedSessionId && sessionList.some((session) => session.id === selectedSessionId);
     if (!hasSelection) {
-      setSelectedSessionId(sessionList[0].id);
+      const fallbackIndex = isNewestFirst ? sessionList.length - 1 : 0;
+      setSelectedSessionId(sessionList[fallbackIndex].id);
     }
-  }, [sessionList, selectedSessionId]);
+  }, [isNewestFirst, sessionList, selectedSessionId]);
 
   return {
     sessionList,

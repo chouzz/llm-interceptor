@@ -5,6 +5,7 @@ import { MemoizedRequestsPane } from './components/layout/RequestsPane';
 import { SessionsSidebar } from './components/layout/SessionsSidebar';
 import { useAnnotations } from './hooks/useAnnotations';
 import { useResizablePanels } from './hooks/useResizablePanels';
+import { useSessionListPreferences } from './hooks/useSessionListPreferences';
 import { useSessions } from './hooks/useSessions';
 import { useTheme } from './hooks/useTheme';
 import { stringToColor } from './utils/ui';
@@ -14,6 +15,7 @@ const API_BASE = import.meta.env.DEV ? 'http://localhost:8000' : '';
 
 const App: React.FC = () => {
   const { isDarkMode, toggleTheme } = useTheme();
+  const { isNewestFirst, toggleSortOrder } = useSessionListPreferences();
   const [systemPromptFilter, setSystemPromptFilter] = useState<string | null>(null);
 
   const {
@@ -37,7 +39,7 @@ const App: React.FC = () => {
     selectedExchangeId,
     setSelectedExchangeId,
     deleteSession,
-  } = useSessions({ apiBase: API_BASE, pollMs: 2000 });
+  } = useSessions({ apiBase: API_BASE, pollMs: 2000, isNewestFirst });
 
   const { annotations, setAnnotations, ensureLoaded, fetchAllAnnotations, updateSessionNote, updateRequestNote } = useAnnotations({
     apiBase: API_BASE,
@@ -115,6 +117,8 @@ const App: React.FC = () => {
             onSelectSession={setSelectedSessionId}
             isDarkMode={isDarkMode}
             onToggleTheme={toggleTheme}
+            isNewestFirst={isNewestFirst}
+            onToggleSortOrder={toggleSortOrder}
             annotations={annotations}
             onUpdateSessionNote={updateSessionNote}
             onDeleteSession={handleDeleteSession}
