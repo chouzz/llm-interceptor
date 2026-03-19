@@ -7,6 +7,8 @@ export interface SessionSummary {
   request_count: number;
   total_latency_ms: number;
   total_tokens: number;
+  duration_ms: number;
+  failed_count: number;
 }
 
 export interface AnnotationData {

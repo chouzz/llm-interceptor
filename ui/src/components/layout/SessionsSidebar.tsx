@@ -6,6 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clock,
   FolderOpen,
   MessageCircle,
   Moon,
@@ -14,7 +15,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { AnnotationData, SessionSummary } from '../../types';
-import { formatTimestamp } from '../../utils';
+import { formatDuration, formatTimestamp } from '../../utils';
 import { Tooltip } from '../common/Tooltip';
 
 export const SessionsSidebar: React.FC<{
@@ -309,6 +310,10 @@ const SessionItem = React.memo<{
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500">
               {formatTimestamp(session.timestamp)}
+            </div>
+            <div className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-0.5">
+              <Clock size={10} />
+              <span>{formatDuration(session.duration_ms)}</span>
             </div>
 
             {/* Note Section - inside the card */}
