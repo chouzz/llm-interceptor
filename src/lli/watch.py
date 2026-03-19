@@ -19,6 +19,8 @@ from typing import Any, TextIO
 from lli.config import get_default_trace_dir
 from lli.logger import get_logger
 
+SESSION_METADATA_FILE = "session_meta.json"
+
 
 class WatchState(Enum):
     """State machine states for watch mode."""
@@ -474,6 +476,19 @@ class WatchManager:
         # Create session directory
         session_dir = self.output_dir / session.directory_name
         session_dir.mkdir(parents=True, exist_ok=True)
+        metadata_path = session_dir / SESSION_METADATA_FILE
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "session_id": session.session_id,
+                    "started_at": session.start_time.isoformat(),
+                    "ended_at": session.end_time.isoformat() if session.end_time else None,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
         # Use temporary files for intermediate processing
         with tempfile.TemporaryDirectory() as temp_dir:
