@@ -42,6 +42,7 @@ class SessionSummary(BaseModel):
     total_latency_ms: float
     total_tokens: int
     duration_ms: int = 0
+    failed_count: int = 0
 
 
 class AnnotationData(BaseModel):
@@ -65,6 +66,7 @@ class ServerState:
 
     def __init__(self, watch_manager: WatchManager):
         self.watch_manager = watch_manager
+        self._session_cache: dict[str, tuple[float, SessionSummary]] = {}
 
 
 SESSION_ID_TIMESTAMP_RE = re.compile(r"^session_(\d{8}_\d{6})(?:_\d+)?$")
@@ -74,13 +76,14 @@ SPLIT_FILE_TIMESTAMP_RE = re.compile(
 
 
 def _parse_iso_datetime(value: object) -> datetime | None:
-    """Parse an ISO-8601 timestamp string into a datetime."""
+    """Parse an ISO-8601 timestamp string into a naive (UTC) datetime."""
     if not isinstance(value, str) or not value:
         return None
 
     normalized = value.replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(normalized)
+        dt = datetime.fromisoformat(normalized)
+        return dt.replace(tzinfo=None)
     except ValueError:
         return None
 
@@ -154,6 +157,7 @@ def _summarize_session_dir(session_dir: Path) -> SessionSummary:
     request_count = 0
     total_latency_ms = 0.0
     total_tokens = 0
+    failed_count = 0
     earliest_timestamp: datetime | None = _read_session_metadata_timestamp(session_dir)
     latest_timestamp: datetime | None = None
     oldest_file_timestamp: datetime | None = None
@@ -203,6 +207,12 @@ def _summarize_session_dir(session_dir: Path) -> SessionSummary:
                 if isinstance(total_value, int | float):
                     total_tokens += int(total_value)
         elif record_type == "response":
+            status_code = payload.get("status_code")
+            if isinstance(status_code, int | float) and int(status_code) >= 400:
+                failed_count += 1
+            elif status_code is None:
+                failed_count += 1
+
             latency_ms = payload.get("latency_ms")
             if isinstance(latency_ms, int | float):
                 total_latency_ms += float(latency_ms)
@@ -245,6 +255,7 @@ def _summarize_session_dir(session_dir: Path) -> SessionSummary:
         total_latency_ms=total_latency_ms,
         total_tokens=total_tokens,
         duration_ms=duration_ms,
+        failed_count=failed_count,
     )
 
 
@@ -265,7 +276,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
     # API Endpoints
 
     @app.get("/api/status", response_model=WatchStatus)
-    async def get_status():
+    def get_status():
         """Get watch-mode status metadata for the UI."""
         traces_dir = state.watch_manager.output_dir
         has_sessions = False
@@ -281,20 +292,38 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
         )
 
     @app.get("/api/sessions", response_model=list[SessionSummary])
-    async def list_sessions():
-        """List all captured sessions."""
+    def list_sessions():
+        """List all captured sessions with mtime-based caching."""
         traces_dir = state.watch_manager.output_dir
 
         if not traces_dir.exists():
             return []
 
         session_dirs = [p for p in traces_dir.iterdir() if _is_session_dir(p)]
-        sessions = [_summarize_session_dir(path) for path in session_dirs]
+        sessions: list[SessionSummary] = []
+        new_cache: dict[str, tuple[float, SessionSummary]] = {}
+
+        for path in session_dirs:
+            try:
+                dir_mtime = path.stat().st_mtime
+            except OSError:
+                continue
+
+            cached = state._session_cache.get(path.name)
+            if cached is not None and cached[0] == dir_mtime:
+                new_cache[path.name] = cached
+                sessions.append(cached[1])
+            else:
+                summary = _summarize_session_dir(path)
+                new_cache[path.name] = (dir_mtime, summary)
+                sessions.append(summary)
+
+        state._session_cache = new_cache
         sessions.sort(key=lambda session: (session.timestamp, session.id))
         return sessions
 
     @app.get("/api/sessions/{session_id}")
-    async def get_session(session_id: str):
+    def get_session(session_id: str):
         """Get full details for a specific session."""
         session_dir = state.watch_manager.output_dir / session_id
 
@@ -331,7 +360,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
         return {"id": session_id, "pairs": result}
 
     @app.delete("/api/sessions/{session_id}")
-    async def delete_session(session_id: str):
+    def delete_session(session_id: str):
         """Delete a captured session and all local files under it."""
         session_dir = state.watch_manager.output_dir / session_id
 
@@ -365,7 +394,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
         }
 
     @app.get("/api/sessions/{session_id}/annotations", response_model=AnnotationData)
-    async def get_annotations(session_id: str):
+    def get_annotations(session_id: str):
         """Get annotations for a specific session."""
         session_dir = state.watch_manager.output_dir / session_id
 
@@ -386,7 +415,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
             return AnnotationData()
 
     @app.put("/api/sessions/{session_id}/annotations", response_model=AnnotationData)
-    async def update_annotations(session_id: str, annotations: AnnotationData):
+    def update_annotations(session_id: str, annotations: AnnotationData):
         """Update annotations for a specific session."""
         session_dir = state.watch_manager.output_dir / session_id
 

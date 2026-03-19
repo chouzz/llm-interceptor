@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { AnnotationData, NormalizedExchange } from '../../types';
-import { formatTimestamp } from '../../utils';
+import { formatDuration, formatTimestamp } from '../../utils';
 import { stringToColor } from '../../utils/ui';
 import { Tooltip } from '../common/Tooltip';
 
@@ -70,6 +70,22 @@ export const RequestsPane: React.FC<{
 
   // Memoize computed values
   const requestCount = useMemo(() => filteredExchanges.length, [filteredExchanges.length]);
+  const { totalLatencyMs, failedCount } = useMemo(() => {
+    return filteredExchanges.reduce(
+      (acc, exchange) => {
+        if (exchange.latencyMs > 0) {
+          acc.totalLatencyMs += exchange.latencyMs;
+        }
+
+        if (exchange.statusCode >= 400 || (exchange.statusCode === 0 && exchange.rawResponse !== null)) {
+          acc.failedCount += 1;
+        }
+
+        return acc;
+      },
+      { totalLatencyMs: 0, failedCount: 0 }
+    );
+  }, [filteredExchanges]);
 
   // Memoize the rendered request items
   const renderedRequests = useMemo(() => {
@@ -139,6 +155,17 @@ export const RequestsPane: React.FC<{
           {!isCollapsed && (
             <span className="text-[10px] bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full border border-gray-200 dark:border-slate-700 shadow-sm">
               {requestCount}
+            </span>
+          )}
+          {!isCollapsed && (
+            <span className="text-[10px] bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full border border-gray-200 dark:border-slate-700 shadow-sm inline-flex items-center gap-1">
+              <Clock size={10} />
+              {formatDuration(totalLatencyMs)}
+            </span>
+          )}
+          {!isCollapsed && failedCount > 0 && (
+            <span className="text-[10px] bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full border border-red-200 dark:border-red-900/40 shadow-sm">
+              {failedCount} failed
             </span>
           )}
           <button
