@@ -7,6 +7,7 @@ Serves the React frontend and provides API endpoints for session data.
 import json
 import logging
 import mimetypes
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,8 @@ from lli.watch import WatchManager
 
 # Get logger
 logger = logging.getLogger("llm_interceptor.server")
+SESSION_METADATA_FILE = "session_meta.json"
+SESSION_ANNOTATIONS_FILE = "annotations.json"
 
 
 def _ensure_static_mime_types():
@@ -38,6 +41,7 @@ class SessionSummary(BaseModel):
     request_count: int
     total_latency_ms: float
     total_tokens: int
+    duration_ms: int = 0
 
 
 class AnnotationData(BaseModel):
@@ -61,6 +65,187 @@ class ServerState:
 
     def __init__(self, watch_manager: WatchManager):
         self.watch_manager = watch_manager
+
+
+SESSION_ID_TIMESTAMP_RE = re.compile(r"^session_(\d{8}_\d{6})(?:_\d+)?$")
+SPLIT_FILE_TIMESTAMP_RE = re.compile(
+    r"^\d+_(?:request|response)_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.json$"
+)
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    """Parse an ISO-8601 timestamp string into a datetime."""
+    if not isinstance(value, str) or not value:
+        return None
+
+    normalized = value.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _parse_session_timestamp(session_id: str) -> datetime | None:
+    """Parse timestamps from session directory names, including collision suffixes."""
+    match = SESSION_ID_TIMESTAMP_RE.match(session_id)
+    if not match:
+        return None
+
+    try:
+        return datetime.strptime(match.group(1), "%Y%m%d_%H%M%S")
+    except ValueError:
+        return None
+
+
+def _parse_split_filename_timestamp(filename: str) -> datetime | None:
+    """Parse timestamps embedded in split request/response filenames."""
+    match = SPLIT_FILE_TIMESTAMP_RE.match(filename)
+    if not match:
+        return None
+
+    try:
+        return datetime.strptime(match.group(1), "%Y-%m-%d_%H-%M-%S")
+    except ValueError:
+        return None
+
+
+def _read_session_metadata_timestamp(session_dir: Path) -> datetime | None:
+    """Read the persisted session start time, if available."""
+    metadata_path = session_dir / SESSION_METADATA_FILE
+    if not metadata_path.exists():
+        return None
+
+    try:
+        with open(metadata_path, encoding="utf-8") as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to read session metadata %s: %s", metadata_path, exc)
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    return _parse_iso_datetime(payload.get("started_at"))
+
+
+def _is_session_dir(path: Path) -> bool:
+    """Best-effort detection for captured session directories."""
+    if not path.is_dir():
+        return False
+
+    if (path / SESSION_METADATA_FILE).exists() or (path / SESSION_ANNOTATIONS_FILE).exists():
+        return True
+
+    if _parse_session_timestamp(path.name) is not None:
+        return True
+
+    return any(path.glob("*.json"))
+
+
+def _summarize_session_dir(session_dir: Path) -> SessionSummary:
+    """
+    Build a stable session summary from directory contents.
+
+    We prefer persisted session metadata so renaming the folder does not affect
+    displayed time. If metadata is unavailable, fall back to timestamps from the
+    captured files, then filename timestamps, then legacy directory-name parsing,
+    and finally stable filesystem metadata instead of `now()`.
+    """
+    request_count = 0
+    total_latency_ms = 0.0
+    total_tokens = 0
+    earliest_timestamp: datetime | None = _read_session_metadata_timestamp(session_dir)
+    latest_timestamp: datetime | None = None
+    oldest_file_timestamp: datetime | None = None
+    oldest_record_file_mtime: datetime | None = None
+
+    for file_path in sorted(session_dir.glob("*.json")):
+        if file_path.name in {SESSION_ANNOTATIONS_FILE, SESSION_METADATA_FILE}:
+            continue
+
+        file_stat = file_path.stat()
+        file_mtime = datetime.fromtimestamp(file_stat.st_mtime)
+        if oldest_record_file_mtime is None or file_mtime < oldest_record_file_mtime:
+            oldest_record_file_mtime = file_mtime
+
+        filename_timestamp = _parse_split_filename_timestamp(file_path.name)
+        if filename_timestamp is not None:
+            if earliest_timestamp is None or filename_timestamp < earliest_timestamp:
+                earliest_timestamp = filename_timestamp
+            if oldest_file_timestamp is None or filename_timestamp < oldest_file_timestamp:
+                oldest_file_timestamp = filename_timestamp
+            if latest_timestamp is None or filename_timestamp > latest_timestamp:
+                latest_timestamp = filename_timestamp
+
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                payload = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Failed to read session file %s: %s", file_path, exc)
+            continue
+
+        if not isinstance(payload, dict):
+            continue
+
+        record_type = payload.get("type")
+        record_timestamp = _parse_iso_datetime(payload.get("timestamp"))
+        if record_timestamp is not None:
+            if earliest_timestamp is None or record_timestamp < earliest_timestamp:
+                earliest_timestamp = record_timestamp
+            if latest_timestamp is None or record_timestamp > latest_timestamp:
+                latest_timestamp = record_timestamp
+
+        if record_type == "request":
+            request_count += 1
+            usage = payload.get("usage")
+            if isinstance(usage, dict):
+                total_value = usage.get("total_tokens")
+                if isinstance(total_value, int | float):
+                    total_tokens += int(total_value)
+        elif record_type == "response":
+            latency_ms = payload.get("latency_ms")
+            if isinstance(latency_ms, int | float):
+                total_latency_ms += float(latency_ms)
+
+            body = payload.get("body")
+            if isinstance(body, dict):
+                usage = body.get("usage")
+                if isinstance(usage, dict):
+                    total_value = usage.get("total_tokens")
+                    if isinstance(total_value, int | float):
+                        total_tokens += int(total_value)
+
+    parsed_timestamp = _parse_session_timestamp(session_dir.name)
+    if earliest_timestamp is None:
+        if oldest_file_timestamp is not None:
+            earliest_timestamp = oldest_file_timestamp
+            latest_timestamp = latest_timestamp or oldest_file_timestamp
+        elif parsed_timestamp is not None:
+            earliest_timestamp = parsed_timestamp
+            latest_timestamp = latest_timestamp or parsed_timestamp
+        elif oldest_record_file_mtime is not None:
+            earliest_timestamp = oldest_record_file_mtime
+            latest_timestamp = latest_timestamp or oldest_record_file_mtime
+        else:
+            fallback_timestamp = datetime.fromtimestamp(session_dir.stat().st_mtime)
+            earliest_timestamp = fallback_timestamp
+            latest_timestamp = latest_timestamp or fallback_timestamp
+
+    duration_ms = 0
+    if latest_timestamp is not None and earliest_timestamp is not None:
+        duration_ms = max(
+            int((latest_timestamp - earliest_timestamp).total_seconds() * 1000),
+            0,
+        )
+
+    return SessionSummary(
+        id=session_dir.name,
+        timestamp=earliest_timestamp,
+        request_count=request_count,
+        total_latency_ms=total_latency_ms,
+        total_tokens=total_tokens,
+        duration_ms=duration_ms,
+    )
 
 
 def create_app(watch_manager: WatchManager) -> FastAPI:
@@ -98,43 +283,14 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
     @app.get("/api/sessions", response_model=list[SessionSummary])
     async def list_sessions():
         """List all captured sessions."""
-        sessions = []
         traces_dir = state.watch_manager.output_dir
 
         if not traces_dir.exists():
             return []
 
-        # Scan for session directories
-        # Sort by directory name (timestamp) ascending (oldest first)
-        session_dirs = sorted(
-            [p for p in traces_dir.glob("session_*") if p.is_dir()],
-            key=lambda p: p.name,
-            reverse=False,
-        )
-
-        for path in session_dirs:
-            # Basic info from directory name
-            try:
-                # Format: session_YYYYMMDD_HHMMSS
-                ts_str = path.name.replace("session_", "")
-                timestamp = datetime.strptime(ts_str, "%Y%m%d_%H%M%S")
-            except ValueError:
-                timestamp = datetime.now()
-
-            # Count requests (rough estimate from file count / 2)
-            file_count = len(list(path.glob("*.json")))
-            req_count = file_count // 2
-
-            sessions.append(
-                SessionSummary(
-                    id=path.name,
-                    timestamp=timestamp,
-                    request_count=req_count,
-                    total_latency_ms=0,  # TODO: Calculate from summary file if available
-                    total_tokens=0,  # TODO: Calculate from summary file if available
-                )
-            )
-
+        session_dirs = [p for p in traces_dir.iterdir() if _is_session_dir(p)]
+        sessions = [_summarize_session_dir(path) for path in session_dirs]
+        sessions.sort(key=lambda session: (session.timestamp, session.id))
         return sessions
 
     @app.get("/api/sessions/{session_id}")
