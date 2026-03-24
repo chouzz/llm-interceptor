@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.8.0] - 2026-03-24
+
+### Added
+
+- **Session list sorting preferences** - Allow configuring session list sort order with local storage persistence
+- **Failed count tracking** - Added failed request count tracking in session summaries with duration formatting
+- **New user friendly messages** - Added friendly welcome messages in Web UI for first-time users
+
+### Fixed
+
+- **Session timestamp stability** - Fixed session timestamp continuously changing issue
+- **Workflow default value type** - Corrected default value type for Test PyPI option in GitHub Actions workflow
+
+
 ## [2.7.0] - 2026-03-16
 
 ### Added
