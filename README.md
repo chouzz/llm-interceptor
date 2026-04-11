@@ -143,7 +143,7 @@ Use `lli config --show` to confirm the upstream CA path. If the file does not ex
 
 ### 5. Visualize with Web UI
 
-The web interface should be launched in http://127.0.0.0.1:8000 to analyze captured conversations:
+The web interface should be launched in http://127.0.0.1:8000 to analyze captured conversations:
 
 In the UI, you can:
 - Browse captured sessions in the sidebar
