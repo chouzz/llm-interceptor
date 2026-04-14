@@ -54,10 +54,23 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const asToolName = (value: unknown) =>
   typeof value === 'string' && value.trim().length > 0 ? value : 'unknown';
 
+const DetailsLoadingState: React.FC<{ label: string }> = ({ label }) => (
+  <div className="max-w-4xl mx-auto py-16">
+    <div className="rounded-xl border border-dashed border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/20 px-6 py-10 text-center">
+      <div className="text-sm font-medium text-slate-600 dark:text-slate-300">{label}</div>
+      <div className="mt-2 text-xs text-slate-500 dark:text-slate-500">
+        Request details are loading lazily so the request list can appear immediately.
+      </div>
+    </div>
+  </div>
+);
+
 export const ExchangeDetailsPane: React.FC<{
   currentExchange: NormalizedExchange | null;
   sessionExchanges: NormalizedExchange[];
-}> = ({ currentExchange, sessionExchanges }) => {
+  isLoadingSession: boolean;
+  isLoadingExchangeDetails: boolean;
+}> = ({ currentExchange, sessionExchanges, isLoadingSession, isLoadingExchangeDetails }) => {
   const [activeTab, setActiveTab] = useState<TabId>('chat');
   const [chatScrollEdges, setChatScrollEdges] = useState({ atTop: true, atBottom: true });
   const [isJsonWrapped, setIsJsonWrapped] = useState(false);
@@ -110,8 +123,11 @@ export const ExchangeDetailsPane: React.FC<{
     [currentExchange?.rawResponse]
   );
 
+  const shouldComputeStats = activeTab === 'stats' && sessionExchanges.length > 0;
+  const isExchangeReady = !!currentExchange?.hasFullDetails && !isLoadingExchangeDetails;
+
   const statsSummary = useMemo(() => {
-    if (sessionExchanges.length === 0) {
+    if (!shouldComputeStats) {
       return { totalLatencyMs: 0, averageLatencyMs: 0, requestCount: 0 };
     }
 
@@ -123,32 +139,36 @@ export const ExchangeDetailsPane: React.FC<{
       averageLatencyMs: totalLatencyMs / requestCount,
       requestCount,
     };
-  }, [sessionExchanges]);
+  }, [sessionExchanges, shouldComputeStats]);
 
   const latencyChartData = useMemo(
     () =>
-      sessionExchanges.map((exchange, index) => ({
-        id: exchange.id,
-        requestIndex: index + 1,
-        latencySec: exchange.latencyMs / 1000,
-      })),
-    [sessionExchanges]
+      shouldComputeStats
+        ? sessionExchanges.map((exchange, index) => ({
+            id: exchange.id,
+            requestIndex: index + 1,
+            latencySec: exchange.latencyMs / 1000,
+          }))
+        : [],
+    [sessionExchanges, shouldComputeStats]
   );
 
   const tokenChartData = useMemo(
     () =>
-      sessionExchanges.map((exchange, index) => ({
-        id: exchange.id,
-        requestIndex: index + 1,
-        totalTokens: exchange.usage?.total_tokens ?? 0,
-        inputTokens: exchange.usage?.input_tokens ?? 0,
-        outputTokens: exchange.usage?.output_tokens ?? 0,
-      })),
-    [sessionExchanges]
+      shouldComputeStats
+        ? sessionExchanges.map((exchange, index) => ({
+            id: exchange.id,
+            requestIndex: index + 1,
+            totalTokens: exchange.usage?.total_tokens ?? 0,
+            inputTokens: exchange.usage?.input_tokens ?? 0,
+            outputTokens: exchange.usage?.output_tokens ?? 0,
+          }))
+        : [],
+    [sessionExchanges, shouldComputeStats]
   );
 
   const tokenSummary = useMemo(() => {
-    if (sessionExchanges.length === 0) {
+    if (!shouldComputeStats) {
       return {
         totalTokens: 0,
         averageTokens: 0,
@@ -171,9 +191,13 @@ export const ExchangeDetailsPane: React.FC<{
       ...totals,
       averageTokens: totals.totalTokens / sessionExchanges.length,
     };
-  }, [sessionExchanges]);
+  }, [sessionExchanges, shouldComputeStats]);
 
   const toolTimelineData = useMemo(() => {
+    if (!shouldComputeStats) {
+      return [];
+    }
+
     const rows: Array<{ requestIndex: number; toolName: string; eventIndex: number; toolIndex: number }> = [];
     const firstSeenToolIndexes = new Map<string, number>();
 
@@ -208,7 +232,7 @@ export const ExchangeDetailsPane: React.FC<{
     });
 
     return rows;
-  }, [sessionExchanges]);
+  }, [sessionExchanges, shouldComputeStats]);
 
   const toolNamesInOrder = useMemo(
     () =>
@@ -368,6 +392,7 @@ export const ExchangeDetailsPane: React.FC<{
           >
             {/* Chat View */}
             {activeTab === 'chat' && (
+              isExchangeReady ? (
               <div className="max-w-4xl mx-auto">
                 {/* Reconstruct conversation history (Context) */}
                 <div className="mb-8">
@@ -413,10 +438,14 @@ export const ExchangeDetailsPane: React.FC<{
                   )}
                 </div>
               </div>
+              ) : (
+                <DetailsLoadingState label="Loading conversation details..." />
+              )
             )}
 
             {/* System Prompt View */}
             {activeTab === 'system' && (
+              isExchangeReady ? (
               <div className="max-w-4xl mx-auto">
                 <div className="bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-slate-800 rounded-lg overflow-hidden shadow-xl">
                   <div className="px-4 py-3 bg-gray-100 dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
@@ -446,10 +475,14 @@ export const ExchangeDetailsPane: React.FC<{
                   </div>
                 </div>
               </div>
+              ) : (
+                <DetailsLoadingState label="Loading system prompt..." />
+              )
             )}
 
             {/* Tools View */}
             {activeTab === 'tools' && (
+              isExchangeReady ? (
               <>
                 {/* Sticky bar: always rendered to avoid layout thrash/flicker while scrolling */}
                 <div
@@ -518,6 +551,9 @@ export const ExchangeDetailsPane: React.FC<{
                   )}
                 </div>
               </>
+              ) : (
+                <DetailsLoadingState label="Loading tool definitions..." />
+              )
             )}
 
 
@@ -881,6 +917,7 @@ export const ExchangeDetailsPane: React.FC<{
 
             {/* Raw JSON View */}
             {activeTab === 'raw' && (
+              isExchangeReady ? (
               <div className="flex flex-col h-full">
                 <div className="flex justify-end mb-4">
                   <button
@@ -935,6 +972,9 @@ export const ExchangeDetailsPane: React.FC<{
                   </div>
                 </div>
               </div>
+              ) : (
+                <DetailsLoadingState label="Loading raw request/response payloads..." />
+              )
             )}
           </div>
 
@@ -975,7 +1015,7 @@ export const ExchangeDetailsPane: React.FC<{
             <Activity size={32} className="opacity-40" />
           </div>
           <p className="text-sm font-medium tracking-wide uppercase opacity-70">
-            Select a request to inspect details
+            {isLoadingSession ? 'Loading session details' : 'Select a request to inspect details'}
           </p>
         </div>
       )}

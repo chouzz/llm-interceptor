@@ -33,6 +33,8 @@ const App: React.FC = () => {
     sessionList,
     currentSession,
     isLoadingList,
+    isLoadingSession,
+    loadingExchangeSequenceId,
     watchStatus,
     selectedSessionId,
     setSelectedSessionId,
@@ -41,23 +43,9 @@ const App: React.FC = () => {
     deleteSession,
   } = useSessions({ apiBase: API_BASE, pollMs: 2000, isNewestFirst });
 
-  const { annotations, setAnnotations, ensureLoaded, fetchAllAnnotations, updateSessionNote, updateRequestNote } = useAnnotations({
+  const { annotations, setAnnotations, ensureLoaded, updateSessionNote, updateRequestNote } = useAnnotations({
     apiBase: API_BASE,
   });
-
-  // Preload annotations for all sessions when session list changes
-  useEffect(() => {
-    if (sessionList.length === 0) return;
-
-    // Find sessions that haven't been loaded yet
-    const unloadedSessionIds = sessionList
-      .map((s) => s.id)
-      .filter((id) => !(id in annotations));
-
-    if (unloadedSessionIds.length > 0) {
-      void fetchAllAnnotations(unloadedSessionIds);
-    }
-  }, [sessionList, annotations, fetchAllAnnotations]);
 
   // Ensure annotations are loaded when session changes (fallback)
   useEffect(() => {
@@ -69,7 +57,9 @@ const App: React.FC = () => {
   const filteredExchanges = useMemo(() => {
     if (!currentSession) return [];
     if (!systemPromptFilter) return currentSession.exchanges;
-    return currentSession.exchanges.filter((ex) => stringToColor(ex.systemPrompt) === systemPromptFilter);
+    return currentSession.exchanges.filter(
+      (ex) => stringToColor(ex.systemPromptKey || ex.systemPrompt || '') === systemPromptFilter
+    );
   }, [currentSession, systemPromptFilter]);
 
   const currentExchange = useMemo(
@@ -131,6 +121,7 @@ const App: React.FC = () => {
             onStartResize={startResizingRequests}
             currentSessionName={currentSession?.name}
             filteredExchanges={filteredExchanges}
+            isLoadingSession={isLoadingSession}
             selectedExchangeId={selectedExchangeId}
             onSelectExchange={setSelectedExchangeId}
             systemPromptFilter={systemPromptFilter}
@@ -140,7 +131,16 @@ const App: React.FC = () => {
             onUpdateRequestNote={updateRequestNote}
           />
 
-          <ExchangeDetailsPane currentExchange={currentExchange} sessionExchanges={filteredExchanges} />
+          <ExchangeDetailsPane
+            currentExchange={currentExchange}
+            sessionExchanges={filteredExchanges}
+            isLoadingSession={isLoadingSession}
+            isLoadingExchangeDetails={
+              !!currentExchange &&
+              ((!currentExchange.hasFullDetails && currentExchange.id === selectedExchangeId) ||
+                loadingExchangeSequenceId === currentExchange.sequenceId)
+            }
+          />
         </>
       )}
     </div>

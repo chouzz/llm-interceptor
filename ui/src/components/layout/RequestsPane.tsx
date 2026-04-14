@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, memo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import {
   Check,
   ChevronLeft,
@@ -24,6 +24,7 @@ export const RequestsPane: React.FC<{
 
   currentSessionName?: string;
   filteredExchanges: NormalizedExchange[];
+  isLoadingSession: boolean;
   selectedExchangeId: string | null;
   onSelectExchange: (exchangeId: string) => void;
 
@@ -40,6 +41,7 @@ export const RequestsPane: React.FC<{
   onStartResize,
   currentSessionName,
   filteredExchanges,
+  isLoadingSession,
   selectedExchangeId,
   onSelectExchange,
   systemPromptFilter,
@@ -49,12 +51,20 @@ export const RequestsPane: React.FC<{
   onUpdateRequestNote,
 }) => {
   const [editingRequestNote, setEditingRequestNote] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [heightVersion, setHeightVersion] = useState(0);
+  const itemHeightsRef = useRef<Record<string, number>>({});
+
+  const estimatedRowHeight = isCollapsed ? 48 : 156;
+  const overscanRows = isCollapsed ? 12 : 6;
 
   // Cache expensive color calculations
   const exchangeColors = useMemo(() => {
     const colors: Record<string, string> = {};
-    filteredExchanges.forEach(exchange => {
-      colors[exchange.id] = stringToColor(exchange.systemPrompt);
+    filteredExchanges.forEach((exchange) => {
+      colors[exchange.id] = stringToColor(exchange.systemPromptKey || exchange.systemPrompt || '');
     });
     return colors;
   }, [filteredExchanges]);
@@ -67,6 +77,42 @@ export const RequestsPane: React.FC<{
   const handleClearFilter = useCallback(() => {
     setSystemPromptFilter(null);
   }, [setSystemPromptFilter]);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const updateViewportHeight = () => {
+      setViewportHeight(container.clientHeight);
+    };
+
+    updateViewportHeight();
+    const resizeObserver = new ResizeObserver(updateViewportHeight);
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  useEffect(() => {
+    itemHeightsRef.current = {};
+    setHeightVersion((version) => version + 1);
+    setScrollTop(0);
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [filteredExchanges, isCollapsed]);
+
+  const handleItemHeightChange = useCallback((exchangeId: string, height: number) => {
+    const nextHeight = Math.max(Math.ceil(height), estimatedRowHeight);
+    if (itemHeightsRef.current[exchangeId] === nextHeight) {
+      return;
+    }
+
+    itemHeightsRef.current[exchangeId] = nextHeight;
+    setHeightVersion((version) => version + 1);
+  }, [estimatedRowHeight]);
 
   // Memoize computed values
   const requestCount = useMemo(() => filteredExchanges.length, [filteredExchanges.length]);
@@ -87,9 +133,51 @@ export const RequestsPane: React.FC<{
     );
   }, [filteredExchanges]);
 
-  // Memoize the rendered request items
-  const renderedRequests = useMemo(() => {
+  const itemMetrics = useMemo(() => {
+    let offset = 0;
     return filteredExchanges.map((exchange) => {
+      const height = itemHeightsRef.current[exchange.id] ?? estimatedRowHeight;
+      const metric = { id: exchange.id, top: offset, height, bottom: offset + height };
+      offset += height;
+      return metric;
+    });
+  }, [estimatedRowHeight, filteredExchanges, heightVersion]);
+
+  const totalHeight = itemMetrics.length > 0 ? itemMetrics[itemMetrics.length - 1].bottom : 0;
+
+  const { startIndex, endIndex } = useMemo(() => {
+    if (itemMetrics.length === 0) {
+      return { startIndex: 0, endIndex: -1 };
+    }
+
+    const overscanPx = estimatedRowHeight * overscanRows;
+    const visibleTop = Math.max(scrollTop - overscanPx, 0);
+    const visibleBottom = scrollTop + Math.max(viewportHeight, estimatedRowHeight) + overscanPx;
+
+    let start = 0;
+    while (start < itemMetrics.length && itemMetrics[start].bottom < visibleTop) {
+      start += 1;
+    }
+
+    let end = start;
+    while (end < itemMetrics.length && itemMetrics[end].top <= visibleBottom) {
+      end += 1;
+    }
+
+    return {
+      startIndex: Math.max(0, start),
+      endIndex: Math.min(itemMetrics.length - 1, Math.max(start, end - 1)),
+    };
+  }, [estimatedRowHeight, itemMetrics, overscanRows, scrollTop, viewportHeight]);
+
+  const renderedRequests = useMemo(() => {
+    if (endIndex < startIndex) {
+      return [];
+    }
+
+    return filteredExchanges.slice(startIndex, endIndex + 1).map((exchange, visibleIndex) => {
+      const itemIndex = startIndex + visibleIndex;
+      const metric = itemMetrics[itemIndex];
       const systemHashColor = exchangeColors[exchange.id];
       const isSelected = selectedExchangeId === exchange.id;
       const seqId = exchange.sequenceId || exchange.id;
@@ -98,36 +186,48 @@ export const RequestsPane: React.FC<{
       const isEditingRequest = editingRequestNote === seqId;
 
       return (
-        <RequestItem
+        <VirtualizedRequestRow
           key={exchange.id}
-          exchange={exchange}
-          isSelected={isSelected}
-          isCollapsed={isCollapsed}
-          systemHashColor={systemHashColor}
-          requestNote={requestNote}
-          hasRequestNote={hasRequestNote}
-          isEditingRequest={isEditingRequest}
-          onSelectExchange={onSelectExchange}
-          onSetIsCollapsed={setIsCollapsed}
-          onSetEditingRequestNote={setEditingRequestNote}
-          onSetSystemPromptFilter={setSystemPromptFilter}
-          onUpdateRequestNote={onUpdateRequestNote}
-          selectedSessionId={selectedSessionId}
-        />
+          top={metric?.top ?? itemIndex * estimatedRowHeight}
+          onHeightChange={handleItemHeightChange}
+          exchangeId={exchange.id}
+        >
+          <RequestItem
+            exchange={exchange}
+            isSelected={isSelected}
+            isCollapsed={isCollapsed}
+            systemHashColor={systemHashColor}
+            requestNote={requestNote}
+            hasRequestNote={hasRequestNote}
+            isEditingRequest={isEditingRequest}
+            onSelectExchange={onSelectExchange}
+            onSetIsCollapsed={setIsCollapsed}
+            onSetEditingRequestNote={setEditingRequestNote}
+            onSetSystemPromptFilter={setSystemPromptFilter}
+            onUpdateRequestNote={onUpdateRequestNote}
+            selectedSessionId={selectedSessionId}
+          />
+        </VirtualizedRequestRow>
       );
     });
   }, [
+    annotations,
+    editingRequestNote,
+    endIndex,
+    estimatedRowHeight,
+    exchangeColors,
     filteredExchanges,
+    handleItemHeightChange,
+    isCollapsed,
+    itemMetrics,
+    onSelectExchange,
+    onUpdateRequestNote,
     selectedExchangeId,
     isCollapsed,
-    editingRequestNote,
     selectedSessionId,
-    annotations,
-    onSelectExchange,
     setIsCollapsed,
     setSystemPromptFilter,
-    onUpdateRequestNote,
-    exchangeColors,
+    startIndex,
   ]);
 
   return (
@@ -191,8 +291,24 @@ export const RequestsPane: React.FC<{
         </div>
       )}
 
-      <div className="overflow-y-auto flex-1 custom-scrollbar bg-white dark:bg-[#0f172a]">
-        {renderedRequests}
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="overflow-y-auto flex-1 custom-scrollbar bg-white dark:bg-[#0f172a]"
+      >
+        {isLoadingSession && filteredExchanges.length === 0 ? (
+          <div className="flex items-center justify-center h-full px-6 text-sm text-slate-500 dark:text-slate-400">
+            Loading requests...
+          </div>
+        ) : filteredExchanges.length === 0 ? (
+          <div className="flex items-center justify-center h-full px-6 text-sm text-slate-500 dark:text-slate-400">
+            No requests in this session.
+          </div>
+        ) : (
+          <div style={{ height: totalHeight, position: 'relative' }}>
+            {renderedRequests}
+          </div>
+        )}
       </div>
 
       {/* Resizer Handle */}
@@ -209,6 +325,36 @@ export const RequestsPane: React.FC<{
 };
 
 export const MemoizedRequestsPane = memo(RequestsPane);
+
+const VirtualizedRequestRow: React.FC<{
+  top: number;
+  exchangeId: string;
+  onHeightChange: (exchangeId: string, height: number) => void;
+  children: React.ReactNode;
+}> = ({ top, exchangeId, onHeightChange, children }) => {
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = rowRef.current;
+    if (!node) return;
+
+    const reportHeight = () => {
+      onHeightChange(exchangeId, node.getBoundingClientRect().height);
+    };
+
+    reportHeight();
+    const resizeObserver = new ResizeObserver(reportHeight);
+    resizeObserver.observe(node);
+
+    return () => resizeObserver.disconnect();
+  }, [exchangeId, onHeightChange]);
+
+  return (
+    <div ref={rowRef} style={{ position: 'absolute', top, left: 0, right: 0 }}>
+      {children}
+    </div>
+  );
+};
 
 // Memoized individual request item component for performance
 const RequestItem = React.memo<{
