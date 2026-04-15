@@ -311,7 +311,8 @@ class StreamMerger:
 
         # Merge deltas into content blocks
         for index, block in sorted(
-            content_blocks.items(), key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0]))
+            content_blocks.items(),
+            key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0])),
         ):
             delta_parts = content_block_deltas.get(index, [])
             merged_delta = "".join(delta_parts)
@@ -333,7 +334,9 @@ class StreamMerger:
             block
             for _, block in sorted(
                 content_blocks.items(),
-                key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0])),
+                key=lambda x: (
+                    (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0]))
+                ),
             )
         ]
 
@@ -452,7 +455,10 @@ class StreamMerger:
         if not all_indices:
             all_indices = {0}
 
-        for index in sorted(all_indices, key=lambda x: (0, int(x)) if str(x).isdigit() else (1, str(x))):
+        for index in sorted(
+            all_indices,
+            key=lambda x: (0, int(x)) if str(x).isdigit() else (1, str(x)),
+        ):
             message: dict[str, Any] = {
                 "role": choices_role.get(index, "assistant"),
             }
@@ -581,7 +587,8 @@ class StreamMerger:
         # Build the final tool calls list
         tool_calls: list[ToolCall] = []
         for index, data in sorted(
-            tool_call_data.items(), key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0]))
+            tool_call_data.items(),
+            key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0])),
         ):
             # Concatenate all JSON fragments for this tool call
             full_json_str = "".join(tool_input_parts.get(index, []))
