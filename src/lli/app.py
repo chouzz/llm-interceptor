@@ -45,7 +45,10 @@ def load_session_turns(session_path: Path) -> list[dict[str, Any]]:
     if not target_dir.exists():
         return []
 
-    files = sorted(os.listdir(target_dir))
+    files = sorted(
+        os.listdir(target_dir),
+        key=lambda f: (0, int(f.split("_")[0])) if f.split("_")[0].isdigit() else (1, f),
+    )
     turns_map: dict[int, dict[str, Any]] = {}
 
     for f in files:
