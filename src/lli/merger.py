@@ -122,7 +122,7 @@ class StreamMerger:
                     request_chunks = sorted(
                         chunks[request_id],
                         key=lambda x: int(x.get("chunk_index", 0))
-                        if isinstance(x.get("chunk_index"), (int, float, str))
+                        if str(x.get("chunk_index", 0)).isdigit()
                         else 0,
                     )
                     meta = metas.get(request_id, {})
@@ -311,7 +311,7 @@ class StreamMerger:
 
         # Merge deltas into content blocks
         for index, block in sorted(
-            content_blocks.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else x[0]
+            content_blocks.items(), key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0]))
         ):
             delta_parts = content_block_deltas.get(index, [])
             merged_delta = "".join(delta_parts)
@@ -333,7 +333,7 @@ class StreamMerger:
             block
             for _, block in sorted(
                 content_blocks.items(),
-                key=lambda x: int(x[0]) if str(x[0]).isdigit() else x[0],
+                key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0])),
             )
         ]
 
@@ -452,7 +452,7 @@ class StreamMerger:
         if not all_indices:
             all_indices = {0}
 
-        for index in sorted(all_indices, key=lambda x: int(x) if str(x).isdigit() else x):
+        for index in sorted(all_indices, key=lambda x: (0, int(x)) if str(x).isdigit() else (1, str(x))):
             message: dict[str, Any] = {
                 "role": choices_role.get(index, "assistant"),
             }
@@ -470,7 +470,7 @@ class StreamMerger:
                 tool_calls_list = []
                 for tc_index, tc_data in sorted(
                     tool_calls_data.items(),
-                    key=lambda x: int(x[0]) if str(x[0]).isdigit() else x[0],
+                    key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0])),
                 ):
                     # Merge arguments
                     args_parts = choices_tool_args.get(index, {}).get(tc_index, [])
@@ -581,7 +581,7 @@ class StreamMerger:
         # Build the final tool calls list
         tool_calls: list[ToolCall] = []
         for index, data in sorted(
-            tool_call_data.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else x[0]
+            tool_call_data.items(), key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0]))
         ):
             # Concatenate all JSON fragments for this tool call
             full_json_str = "".join(tool_input_parts.get(index, []))

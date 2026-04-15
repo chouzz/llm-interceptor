@@ -608,7 +608,7 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
             pair_entry.summary or _empty_exchange_summary(sequence_id)
             for sequence_id, pair_entry in sorted(
                 pair_cache.items(),
-                key=lambda x: int(x[0]) if x[0].isdigit() else x[0],
+                key=lambda x: (0, int(x[0])) if x[0].isdigit() else (1, x[0]),
             )
         ],
     )
