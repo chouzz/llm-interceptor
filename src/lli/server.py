@@ -518,13 +518,14 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
                 if system_prompt_key:
                     summary.system_prompt_key = system_prompt_key
 
-                summary.tool_names.extend(_extract_request_tool_names(body))
+                for name in _extract_request_tool_names(body):
+                    if name not in summary.tool_names:
+                        summary.tool_names.append(name)
 
             request_usage = _normalize_usage_metrics(payload.get("usage"))
             if request_usage is not None:
                 total_tokens += request_usage.total_tokens
-                if summary.usage is None:
-                    summary.usage = request_usage
+                summary.usage = request_usage
 
         else:
             pair_entry.response_path = file_path
@@ -547,10 +548,14 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
             if isinstance(body, dict):
                 usage = _normalize_usage_metrics(body.get("usage"))
                 if usage is not None:
+                    # Response usage supersedes request usage to avoid double-counting
+                    total_tokens -= (request_usage.total_tokens if request_usage is not None else 0)
                     total_tokens += usage.total_tokens
                     summary.usage = usage
 
-                summary.tool_names.extend(_extract_response_tool_names(body))
+                for name in _extract_response_tool_names(body):
+                    if name not in summary.tool_names:
+                        summary.tool_names.append(name)
 
         if not summary.timestamp:
             summary.timestamp = payload.get("timestamp", "")

@@ -154,15 +154,23 @@ export const RequestsPane: React.FC<{
     const visibleTop = Math.max(scrollTop - overscanPx, 0);
     const visibleBottom = scrollTop + Math.max(viewportHeight, estimatedRowHeight) + overscanPx;
 
-    let start = 0;
-    while (start < itemMetrics.length && itemMetrics[start].bottom < visibleTop) {
-      start += 1;
+    // Binary search for start index (first item with bottom >= visibleTop)
+    let lo = 0, hi = itemMetrics.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (itemMetrics[mid].bottom < visibleTop) lo = mid + 1;
+      else hi = mid;
     }
+    const start = lo;
 
-    let end = start;
-    while (end < itemMetrics.length && itemMetrics[end].top <= visibleBottom) {
-      end += 1;
+    // Binary search for end index (first item with top > visibleBottom)
+    lo = start; hi = itemMetrics.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (itemMetrics[mid].top <= visibleBottom) lo = mid + 1;
+      else hi = mid;
     }
+    const end = lo;
 
     return {
       startIndex: Math.max(0, start),
