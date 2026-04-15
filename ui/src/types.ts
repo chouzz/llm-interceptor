@@ -40,9 +40,36 @@ export interface RequestResponsePair {
   response: LogRecord | null;
 }
 
-export interface SessionDetails {
+export interface UsageMetrics {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface ExchangeSummary {
   id: string;
-  pairs: RequestResponsePair[];
+  sequence_id: string;
+  timestamp: string;
+  request_method: string;
+  request_url: string;
+  status_code: number;
+  latency_ms: number;
+  model: string;
+  system_prompt_key: string;
+  usage?: UsageMetrics;
+  has_response: boolean;
+  tool_names: string[];
+}
+
+export interface SessionOverview {
+  id: string;
+  exchanges: ExchangeSummary[];
+}
+
+export interface ExchangeDetail {
+  id: string;
+  sequence_id: string;
+  pair: RequestResponsePair;
 }
 
 
@@ -86,6 +113,9 @@ export interface NormalizedExchange {
   latencyMs: number;
   statusCode: number;
   model: string;
+  systemPromptKey: string;
+  toolNames: string[];
+  hasFullDetails: boolean;
 
   // Grouped Data
   systemPrompt?: string; // Extracted system prompt

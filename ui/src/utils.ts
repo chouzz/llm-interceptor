@@ -1,11 +1,13 @@
 import type {
+  ExchangeDetail,
   NormalizedExchange,
   NormalizedMessage,
   NormalizedTool,
   RawRequest,
   RawResponse,
   Session,
-  SessionDetails,
+  SessionOverview,
+  RequestResponsePair,
 } from './types';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -255,124 +257,177 @@ const normalizeAnthropicRequest = (
   return { system, messages, tools, model };
 };
 
-/**
- * Main parser function to process API session details
- */
-export const normalizeSession = (details: SessionDetails): Session => {
-  const exchanges: NormalizedExchange[] = [];
+const normalizeExchangePair = (
+  pair: RequestResponsePair,
+  index: number,
+  fallbackSessionId: string,
+  sequenceId?: string
+): NormalizedExchange | null => {
+  if (!pair.request) return null;
 
-  details.pairs.forEach((pair, index) => {
-    // Basic Request Validation
-    if (!pair.request) return;
+  const rawRequest: RawRequest = {
+    type: 'request',
+    id: pair.request.request_id,
+    timestamp: pair.request.timestamp,
+    method: pair.request.method || 'POST',
+    url: pair.request.url || '',
+    headers: pair.request.headers || {},
+    body: pair.request.body,
+  };
 
-    const rawRequest: RawRequest = {
-      type: 'request',
-      id: pair.request.request_id,
-      timestamp: pair.request.timestamp,
-      method: pair.request.method || 'POST',
-      url: pair.request.url || '',
-      headers: pair.request.headers || {},
-      body: pair.request.body,
-    };
+  const rawResponse: RawResponse | null = pair.response
+    ? {
+        type: 'response',
+        request_id: pair.response.request_id,
+        timestamp: pair.response.timestamp,
+        status_code: pair.response.status_code || 0,
+        latency_ms: pair.response.latency_ms || 0,
+        body: pair.response.body,
+      }
+    : null;
 
-    const rawResponse: RawResponse | null = pair.response
-      ? {
-          type: 'response',
-          request_id: pair.response.request_id,
-          timestamp: pair.response.timestamp,
-          status_code: pair.response.status_code || 0,
-          latency_ms: pair.response.latency_ms || 0,
-          body: pair.response.body,
-        }
-      : null;
+  let responseContent: unknown = rawResponse?.body;
+  const usageData: unknown =
+    isRecord(rawResponse?.body) && 'usage' in rawResponse.body ? rawResponse.body.usage : undefined;
 
-    // --- Normalization Logic ---
-    let responseContent: unknown = rawResponse?.body;
-    const usageData: unknown =
-      isRecord(rawResponse?.body) && 'usage' in rawResponse.body ? rawResponse.body.usage : undefined;
+  try {
+    const openAIFormat = isOpenAIFormat(rawRequest.body);
+    const normalized = openAIFormat
+      ? normalizeOpenAIRequest(rawRequest.body)
+      : normalizeAnthropicRequest(rawRequest.body);
 
-    try {
-      const normalized = isOpenAIFormat(rawRequest.body)
-        ? normalizeOpenAIRequest(rawRequest.body)
-        : normalizeAnthropicRequest(rawRequest.body);
-
-      // Provider-specific response normalization
-      if (isOpenAIFormat(rawRequest.body)) {
-        if (isRecord(rawResponse?.body) && Array.isArray(rawResponse.body.choices)) {
-          const choice = rawResponse.body.choices[0];
-          if (isRecord(choice) && isRecord(choice.message)) {
-            const msg = choice.message;
-            if (Array.isArray(msg.tool_calls)) {
-              const blocks: Record<string, unknown>[] = [];
-              if (msg.content) {
-                blocks.push({ type: 'text', text: msg.content });
-              }
-              msg.tool_calls.forEach((tc) => {
-                if (!isRecord(tc) || !isRecord(tc.function)) return;
-                const argsRaw = asString(tc.function.arguments, '');
-                let input: unknown = {};
-                if (argsRaw) {
-                  try {
-                    input = JSON.parse(argsRaw);
-                  } catch {
-                    input = { error: 'Failed to parse arguments', raw: argsRaw };
-                  }
-                }
-                blocks.push({
-                  type: 'tool_use',
-                  name: asString(tc.function.name, 'unknown'),
-                  input,
-                  id: tc.id,
-                });
-              });
-              responseContent = blocks;
-            } else {
-              responseContent = msg.content;
+    if (openAIFormat) {
+      if (isRecord(rawResponse?.body) && Array.isArray(rawResponse.body.choices)) {
+        const choice = rawResponse.body.choices[0];
+        if (isRecord(choice) && isRecord(choice.message)) {
+          const msg = choice.message;
+          if (Array.isArray(msg.tool_calls)) {
+            const blocks: Record<string, unknown>[] = [];
+            if (msg.content) {
+              blocks.push({ type: 'text', text: msg.content });
             }
+            msg.tool_calls.forEach((tc) => {
+              if (!isRecord(tc) || !isRecord(tc.function)) return;
+              const argsRaw = asString(tc.function.arguments, '');
+              let input: unknown = {};
+              if (argsRaw) {
+                try {
+                  input = JSON.parse(argsRaw);
+                } catch {
+                  input = { error: 'Failed to parse arguments', raw: argsRaw };
+                }
+              }
+              blocks.push({
+                type: 'tool_use',
+                name: asString(tc.function.name, 'unknown'),
+                input,
+                id: tc.id,
+              });
+            });
+            responseContent = blocks;
+          } else {
+            responseContent = msg.content;
           }
         }
-      } else {
-        // Default: Anthropic Format
-        if (isRecord(rawResponse?.body)) {
-          responseContent = 'content' in rawResponse.body ? (rawResponse.body as Record<string, unknown>).content : rawResponse.body;
-        }
       }
-
-      const { system, messages, tools, model } = normalized;
-
-      // Generate a 3-digit sequence ID based on index
-      const sequenceId = String(index + 1).padStart(3, '0');
-
-      const exchange: NormalizedExchange = {
-        id: rawRequest.id || `local-${index}`,
-        sequenceId,
-        timestamp: rawRequest.timestamp || new Date().toISOString(),
-        latencyMs: rawResponse?.latency_ms || 0,
-        statusCode: rawResponse?.status_code || 0,
-        model,
-        systemPrompt: system,
-        messages,
-        tools,
-        responseContent,
-        usage: normalizeUsageMetrics(usageData),
-        rawRequest,
-        rawResponse,
-      };
-
-      exchanges.push(exchange);
-    } catch (e) {
-      console.error(`Error processing request ${index} in session ${details.id}`, e);
+    } else if (isRecord(rawResponse?.body)) {
+      responseContent = 'content' in rawResponse.body ? (rawResponse.body as Record<string, unknown>).content : rawResponse.body;
     }
-  });
+
+    const { system, messages, tools, model } = normalized;
+
+    return {
+      id: rawRequest.id || `${fallbackSessionId}-${sequenceId || index + 1}`,
+      sequenceId: sequenceId || String(index + 1).padStart(3, '0'),
+      timestamp: rawRequest.timestamp || new Date().toISOString(),
+      latencyMs: rawResponse?.latency_ms || 0,
+      statusCode: rawResponse?.status_code || 0,
+      model,
+      systemPromptKey: system || '',
+      toolNames: [],
+      hasFullDetails: true,
+      systemPrompt: system,
+      messages,
+      tools,
+      responseContent,
+      usage: normalizeUsageMetrics(usageData),
+      rawRequest,
+      rawResponse,
+    };
+  } catch (e) {
+    console.error(`Error processing request ${index} in session ${fallbackSessionId}`, e);
+    return null;
+  }
+};
+
+export const normalizeSessionOverview = (overview: SessionOverview): Session => {
+  const exchanges: NormalizedExchange[] = overview.exchanges.map((exchange) => ({
+    id: exchange.id || `${overview.id}-${exchange.sequence_id}`,
+    sequenceId: exchange.sequence_id,
+    timestamp: exchange.timestamp || new Date().toISOString(),
+    latencyMs: exchange.latency_ms || 0,
+    statusCode: exchange.status_code || 0,
+    model: exchange.model || 'unknown-model',
+    systemPromptKey: exchange.system_prompt_key || '',
+    toolNames: exchange.tool_names || [],
+    hasFullDetails: false,
+    systemPrompt: undefined,
+    messages: [],
+    tools: [],
+    responseContent: null,
+    usage: normalizeUsageMetrics(exchange.usage),
+    rawRequest: {
+      type: 'request',
+      id: exchange.id || `${overview.id}-${exchange.sequence_id}`,
+      timestamp: exchange.timestamp || new Date().toISOString(),
+      method: exchange.request_method || 'POST',
+      url: exchange.request_url || '',
+      headers: {},
+      body: null,
+    },
+    rawResponse: exchange.has_response
+      ? {
+          type: 'response',
+          request_id: exchange.id,
+          timestamp: exchange.timestamp || new Date().toISOString(),
+          status_code: exchange.status_code || 0,
+          latency_ms: exchange.latency_ms || 0,
+          body: null,
+        }
+      : null,
+  }));
 
   return {
-    id: details.id,
-    name: details.id,
-    exchanges: exchanges.sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    ),
+    id: overview.id,
+    name: overview.id,
+    exchanges,
   };
 };
+
+export const normalizeExchangeDetail = (detail: ExchangeDetail, sessionId: string): NormalizedExchange | null => {
+  const normalized = normalizeExchangePair(detail.pair, Number(detail.sequence_id) - 1, sessionId, detail.sequence_id);
+  if (!normalized) return null;
+  normalized.id = detail.id || normalized.id;
+  return normalized;
+};
+
+export const mergeExchangeDetail = (
+  session: Session,
+  detailedExchange: NormalizedExchange
+): Session => ({
+  ...session,
+  exchanges: session.exchanges.map((exchange) =>
+    exchange.sequenceId === detailedExchange.sequenceId
+      ? {
+          ...exchange,
+          ...detailedExchange,
+          systemPromptKey: exchange.systemPromptKey || detailedExchange.systemPromptKey,
+          toolNames: exchange.toolNames.length > 0 ? exchange.toolNames : detailedExchange.toolNames,
+          hasFullDetails: true,
+        }
+      : exchange
+  ),
+});
 
 export const formatTimestamp = (iso: string) => {
   if (!iso) return '--:--:--';
