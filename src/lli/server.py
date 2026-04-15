@@ -458,6 +458,7 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
         return 999999, name
 
     for file_path in sorted(session_dir.glob("*.json"), key=_numeric_key):
+        request_usage = None
         parsed = _parse_session_file(file_path)
         if parsed is None:
             continue

@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Request sorting** - Fixed lexicographic sorting bug that caused incorrect order for sessions with 1000+ requests (e.g. showing #101 after #1022 instead of #1023) (#69)
+- **Request sorting** - Fixed lexicographic sorting bug that caused incorrect order for sessions with 1000+ requests (e.g. showing #2 after #1022 instead of after #1) (#69)
 - **README typo** - Corrected IP address typo in documentation (127.0.0.0.1 → 127.0.0.1)
 - **Token double-counting** - Fixed total tokens being double-counted when both request and response contain usage metrics
 - **Tool name deduplication** - Prevented duplicate tool names in session summaries
