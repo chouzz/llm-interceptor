@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.9.0] - 2026-04-15
+
+### Added
+
+- **Lazy-load session exchanges** - Session overview now loads exchange data on demand, significantly improving initial load time for sessions with many requests
+- **Virtualized request rendering** - Requests list uses binary search-based virtualization for smooth scrolling with large datasets (#68)
+
+### Fixed
+
+- **Request sorting** - Fixed lexicographic sorting bug that caused incorrect order for sessions with 1000+ requests (e.g. showing #2 after #1022 instead of after #1) (#69)
+- **README typo** - Corrected IP address typo in documentation (127.0.0.0.1 → 127.0.0.1)
+- **Token double-counting** - Fixed total tokens being double-counted when both request and response contain usage metrics
+- **Tool name deduplication** - Prevented duplicate tool names in session summaries
+
+### Changed
+
+- Increased sequence ID zero-padding from 3 to 5 digits to support larger sessions
+
+
 ## [2.8.0] - 2026-03-24
 
 ### Added
