@@ -449,7 +449,15 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
 
     started_at = perf_counter()
 
-    for file_path in sorted(session_dir.glob("*.json")):
+    def _numeric_key(file_path: Path) -> tuple[int, str]:
+        """Extract a numeric key from a filename for natural sorting."""
+        name = file_path.name
+        match = re.match(r"^(\d+)", name)
+        if match:
+            return int(match.group(1)), name
+        return 999999, name
+
+    for file_path in sorted(session_dir.glob("*.json"), key=_numeric_key):
         parsed = _parse_session_file(file_path)
         if parsed is None:
             continue
@@ -598,7 +606,10 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
         id=session_dir.name,
         exchanges=[
             pair_entry.summary or _empty_exchange_summary(sequence_id)
-            for sequence_id, pair_entry in sorted(pair_cache.items())
+            for sequence_id, pair_entry in sorted(
+                pair_cache.items(),
+                key=lambda x: int(x[0]) if x[0].isdigit() else x[0],
+            )
         ],
     )
     try:

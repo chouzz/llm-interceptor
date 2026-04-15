@@ -120,7 +120,10 @@ class StreamMerger:
                     writer.write_record(request)
 
                     request_chunks = sorted(
-                        chunks[request_id], key=lambda x: x.get("chunk_index", 0)
+                        chunks[request_id],
+                        key=lambda x: int(x.get("chunk_index", 0))
+                        if isinstance(x.get("chunk_index"), (int, float, str))
+                        else 0,
                     )
                     meta = metas.get(request_id, {})
 
@@ -307,7 +310,9 @@ class StreamMerger:
                     body["usage"].update(content["usage"])
 
         # Merge deltas into content blocks
-        for index, block in sorted(content_blocks.items()):
+        for index, block in sorted(
+            content_blocks.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else x[0]
+        ):
             delta_parts = content_block_deltas.get(index, [])
             merged_delta = "".join(delta_parts)
 
@@ -324,7 +329,13 @@ class StreamMerger:
                 block["thinking"] = block.get("thinking", "") + merged_delta
 
         # Build content array in order
-        body["content"] = [block for _, block in sorted(content_blocks.items())]
+        body["content"] = [
+            block
+            for _, block in sorted(
+                content_blocks.items(),
+                key=lambda x: int(x[0]) if str(x[0]).isdigit() else x[0],
+            )
+        ]
 
         # Build response record
         response: dict[str, Any] = {
@@ -441,7 +452,7 @@ class StreamMerger:
         if not all_indices:
             all_indices = {0}
 
-        for index in sorted(all_indices):
+        for index in sorted(all_indices, key=lambda x: int(x) if str(x).isdigit() else x):
             message: dict[str, Any] = {
                 "role": choices_role.get(index, "assistant"),
             }
@@ -457,7 +468,10 @@ class StreamMerger:
             tool_calls_data = choices_tool_calls.get(index, {})
             if tool_calls_data:
                 tool_calls_list = []
-                for tc_index, tc_data in sorted(tool_calls_data.items()):
+                for tc_index, tc_data in sorted(
+                    tool_calls_data.items(),
+                    key=lambda x: int(x[0]) if str(x[0]).isdigit() else x[0],
+                ):
                     # Merge arguments
                     args_parts = choices_tool_args.get(index, {}).get(tc_index, [])
                     tc_data["function"]["arguments"] = "".join(args_parts)
@@ -566,7 +580,9 @@ class StreamMerger:
 
         # Build the final tool calls list
         tool_calls: list[ToolCall] = []
-        for index, data in sorted(tool_call_data.items()):
+        for index, data in sorted(
+            tool_call_data.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else x[0]
+        ):
             # Concatenate all JSON fragments for this tool call
             full_json_str = "".join(tool_input_parts.get(index, []))
 

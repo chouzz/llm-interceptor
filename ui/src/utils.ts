@@ -338,7 +338,7 @@ const normalizeExchangePair = (
 
     return {
       id: rawRequest.id || `${fallbackSessionId}-${sequenceId || index + 1}`,
-      sequenceId: sequenceId || String(index + 1).padStart(3, '0'),
+      sequenceId: sequenceId || String(index + 1).padStart(5, '0'),
       timestamp: rawRequest.timestamp || new Date().toISOString(),
       latencyMs: rawResponse?.latency_ms || 0,
       statusCode: rawResponse?.status_code || 0,
