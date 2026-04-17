@@ -227,7 +227,7 @@ export const ExchangeDetailsPane: React.FC<{
 
     sessionExchanges.forEach((exchange, idx) => {
       const requestIndex = idx + 1;
-      exchange.messages.forEach((message) => pushToolUseFromContent(message.content, requestIndex));
+      (exchange.messages || []).forEach((message) => pushToolUseFromContent(message.content, requestIndex));
       pushToolUseFromContent(exchange.responseContent, requestIndex);
     });
 
