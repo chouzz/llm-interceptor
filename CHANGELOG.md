@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.9.1] - 2026-04-17
+
+### Fixed
+
+- **TypeError on undefined messages** - Safeguarded `exchange.messages.forEach` to prevent crash when messages is undefined (#71)
+
+
 ## [2.9.0] - 2026-04-15
 
 ### Added
