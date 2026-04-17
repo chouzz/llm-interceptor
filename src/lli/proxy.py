@@ -306,17 +306,18 @@ class WatchAddon:
 
         return masked
 
+    # Pre-compiled regex patterns for API key masking
+    _MASK_PATTERNS = [
+        (re.compile(r"(sk-[a-zA-Z0-9]{4})[a-zA-Z0-9]+"), r"\1***"),
+        (re.compile(r"(Bearer\s+)[a-zA-Z0-9_-]+"), r"\1***MASKED***"),
+        (re.compile(r"([a-zA-Z0-9]{8})[a-zA-Z0-9]{24,}"), r"\1***"),
+    ]
+
     def _mask_api_key(self, value: str) -> str:
         """Mask an API key value."""
-        patterns = [
-            (r"(sk-[a-zA-Z0-9]{4})[a-zA-Z0-9]+", r"\1***"),
-            (r"(Bearer\s+)[a-zA-Z0-9_-]+", r"\1***MASKED***"),
-            (r"([a-zA-Z0-9]{8})[a-zA-Z0-9]{24,}", r"\1***"),
-        ]
-
         masked = value
-        for pattern, replacement in patterns:
-            masked = re.sub(pattern, replacement, masked)
+        for pattern, replacement in self._MASK_PATTERNS:
+            masked = pattern.sub(replacement, masked)
 
         if masked == value and len(value) > 16:
             return value[:8] + self.masking_config.mask_pattern
