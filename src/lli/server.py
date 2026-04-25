@@ -682,6 +682,15 @@ def _is_session_dir(path: Path) -> bool:
     return any(path.glob("*.json"))
 
 
+def _validate_session_id(session_id: str) -> None:
+    """Validate session_id to prevent path traversal attacks.
+
+    Session IDs must match the expected format: session_YYYYMMDD_HHMMSS
+    """
+    if not _parse_session_timestamp(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session ID format")
+
+
 def create_app(watch_manager: WatchManager) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(title="LLM Interceptor API")
@@ -748,6 +757,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
     @app.get("/api/sessions/{session_id}", response_model=SessionOverview)
     def get_session(session_id: str):
         """Get a fast overview for a specific session."""
+        _validate_session_id(session_id)
         session_dir = state.watch_manager.output_dir / session_id
 
         if not session_dir.exists():
@@ -766,6 +776,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
     @app.get("/api/sessions/{session_id}/exchanges/{sequence_id}", response_model=ExchangeDetail)
     def get_exchange_detail(session_id: str, sequence_id: str):
         """Get the full request/response payload for a single exchange."""
+        _validate_session_id(session_id)
         session_dir = state.watch_manager.output_dir / session_id
 
         if not session_dir.exists():
@@ -790,6 +801,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
     @app.delete("/api/sessions/{session_id}")
     def delete_session(session_id: str):
         """Delete a captured session and all local files under it."""
+        _validate_session_id(session_id)
         session_dir = state.watch_manager.output_dir / session_id
 
         if not session_dir.exists() or not session_dir.is_dir():
@@ -824,6 +836,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
     @app.get("/api/sessions/{session_id}/annotations", response_model=AnnotationData)
     def get_annotations(session_id: str):
         """Get annotations for a specific session."""
+        _validate_session_id(session_id)
         session_dir = state.watch_manager.output_dir / session_id
 
         if not session_dir.exists():
@@ -845,6 +858,7 @@ def create_app(watch_manager: WatchManager) -> FastAPI:
     @app.put("/api/sessions/{session_id}/annotations", response_model=AnnotationData)
     def update_annotations(session_id: str, annotations: AnnotationData):
         """Update annotations for a specific session."""
+        _validate_session_id(session_id)
         session_dir = state.watch_manager.output_dir / session_id
 
         if not session_dir.exists():
