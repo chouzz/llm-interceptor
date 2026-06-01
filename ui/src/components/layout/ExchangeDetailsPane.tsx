@@ -123,6 +123,13 @@ export const ExchangeDetailsPane: React.FC<{
     [currentExchange?.rawResponse]
   );
 
+  const systemPromptText = useMemo(
+    () => (currentExchange?.systemPrompt != null ? extractTextContent(currentExchange.systemPrompt).trim() : ''),
+    [currentExchange?.systemPrompt]
+  );
+
+  const hasSystemPrompt = systemPromptText.length > 0;
+
   const shouldComputeStats = activeTab === 'stats' && sessionExchanges.length > 0;
   const isExchangeReady = !!currentExchange?.hasFullDetails && !isLoadingExchangeDetails;
 
@@ -402,11 +409,11 @@ export const ExchangeDetailsPane: React.FC<{
                     <span className="w-12 h-[1px] bg-gray-200 dark:bg-slate-800"></span>
                   </div>
 
-                  {currentExchange.systemPrompt != null && (
+                  {hasSystemPrompt && currentExchange.systemPrompt != null && (
                     <ChatBubble message={{ role: 'system', content: currentExchange.systemPrompt }} />
                   )}
 
-                  {currentExchange.messages.length === 0 && currentExchange.systemPrompt == null && (
+                  {currentExchange.messages.length === 0 && !hasSystemPrompt && (
                     <div className="text-sm text-slate-500 dark:text-slate-600 italic text-center py-8 bg-gray-50 dark:bg-slate-900/20 rounded-lg border border-dashed border-gray-200 dark:border-slate-800">
                       No prior context messages. This appears to be the start of a conversation.
                     </div>
@@ -455,17 +462,17 @@ export const ExchangeDetailsPane: React.FC<{
                         System Instruction
                       </span>
                     </div>
-                    {currentExchange.systemPrompt != null && (
+                    {hasSystemPrompt && (
                       <CopyButton
-                        content={extractTextContent(currentExchange.systemPrompt)}
+                        content={systemPromptText}
                         className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700"
                       />
                     )}
                   </div>
                   <div className="p-6 overflow-x-auto bg-gray-50 dark:bg-transparent">
-                    {currentExchange.systemPrompt != null ? (
+                    {hasSystemPrompt ? (
                       <pre className="text-sm font-mono text-slate-800 dark:text-slate-300 whitespace-pre-wrap leading-relaxed selection:bg-red-200 dark:selection:bg-red-900/30">
-                        {extractTextContent(currentExchange.systemPrompt)}
+                        {systemPromptText}
                       </pre>
                     ) : (
                       <div className="text-gray-500 dark:text-slate-500 italic text-sm text-center py-8">
