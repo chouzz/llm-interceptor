@@ -95,7 +95,7 @@ const normalizeUsageMetrics = (rawUsage: unknown) => {
 /**
  * Convert OpenAI system content (string/array/object) to readable string.
  */
-const normalizeOpenAISystemContent = (content: unknown): string => {
+const extractProviderTextContent = (content: unknown): string => {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
@@ -131,7 +131,7 @@ const normalizeOpenAIRequest = (
   const system =
     systemMessages.length > 0
       ? systemMessages
-          .map((m) => (isRecord(m) ? normalizeOpenAISystemContent(m.content) : ''))
+          .map((m) => (isRecord(m) ? extractProviderTextContent(m.content) : ''))
           .filter(Boolean)
           .join('\n')
       : undefined;
@@ -220,23 +220,24 @@ const normalizeOpenAIRequest = (
  */
 const normalizeAnthropicRequest = (
   body: unknown
-): { system: string | undefined; messages: NormalizedMessage[]; tools: NormalizedTool[]; model: string } => {
+): { system: unknown; messages: NormalizedMessage[]; tools: NormalizedTool[]; model: string } => {
   if (!isRecord(body)) return { system: undefined, messages: [], tools: [], model: 'unknown' };
 
   const model = asString(body.model, 'unknown-model');
 
-  // System prompt can be a string or array of objects in Anthropic
-  let system: string | undefined = undefined;
-  if (typeof body.system === 'string') {
-    system = body.system;
-  } else if (Array.isArray(body.system)) {
-    system = body.system
-      .map((s) => (isRecord(s) ? asString(s.text) : ''))
-      .filter(Boolean)
-      .join('\n');
-  }
+  // System prompt can be a string or an array of content blocks in Anthropic.
+  // Preserve arrays so the chat/system views can render each block separately.
+  const system: unknown =
+    typeof body.system === 'string' || Array.isArray(body.system) ? body.system : undefined;
 
-  const messages: NormalizedMessage[] = Array.isArray(body.messages) ? (body.messages as NormalizedMessage[]) : [];
+  const messages: NormalizedMessage[] = Array.isArray(body.messages)
+    ? body.messages
+        .filter((message): message is Record<string, unknown> => isRecord(message))
+        .map((message) => ({
+          role: asString(message.role, 'user') as NormalizedMessage['role'],
+          content: message.content,
+        }))
+    : [];
 
   const tools: NormalizedTool[] = Array.isArray(body.tools)
     ? body.tools
@@ -335,6 +336,7 @@ const normalizeExchangePair = (
     }
 
     const { system, messages, tools, model } = normalized;
+    const systemPromptKey = extractProviderTextContent(system);
 
     return {
       id: rawRequest.id || `${fallbackSessionId}-${sequenceId || index + 1}`,
@@ -343,7 +345,7 @@ const normalizeExchangePair = (
       latencyMs: rawResponse?.latency_ms || 0,
       statusCode: rawResponse?.status_code || 0,
       model,
-      systemPromptKey: system || '',
+      systemPromptKey,
       toolNames: [],
       hasFullDetails: true,
       systemPrompt: system,
