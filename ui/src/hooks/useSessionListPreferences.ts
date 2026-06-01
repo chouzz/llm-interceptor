@@ -4,14 +4,15 @@ const SORT_ORDER_STORAGE_KEY = 'lli.sessions.sortNewestFirst';
 
 function readInitialSortPreference(): boolean {
   if (typeof window === 'undefined') {
-    return false;
+    return true;
   }
 
   try {
-    return window.localStorage.getItem(SORT_ORDER_STORAGE_KEY) === 'true';
+    const storedPreference = window.localStorage.getItem(SORT_ORDER_STORAGE_KEY);
+    return storedPreference === null ? true : storedPreference === 'true';
   } catch (error) {
     console.error('Failed to read session sort preference', error);
-    return false;
+    return true;
   }
 }
 
