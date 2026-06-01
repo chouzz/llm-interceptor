@@ -58,7 +58,7 @@ const App: React.FC = () => {
     if (!currentSession) return [];
     if (!systemPromptFilter) return currentSession.exchanges;
     return currentSession.exchanges.filter(
-      (ex) => stringToColor(ex.systemPromptKey || ex.systemPrompt || '') === systemPromptFilter
+      (ex) => stringToColor(ex.systemPromptKey) === systemPromptFilter
     );
   }, [currentSession, systemPromptFilter]);
 

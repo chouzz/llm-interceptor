@@ -64,7 +64,7 @@ export const RequestsPane: React.FC<{
   const exchangeColors = useMemo(() => {
     const colors: Record<string, string> = {};
     filteredExchanges.forEach((exchange) => {
-      colors[exchange.id] = stringToColor(exchange.systemPromptKey || exchange.systemPrompt || '');
+      colors[exchange.id] = stringToColor(exchange.systemPromptKey);
     });
     return colors;
   }, [filteredExchanges]);

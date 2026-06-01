@@ -118,7 +118,7 @@ export interface NormalizedExchange {
   hasFullDetails: boolean;
 
   // Grouped Data
-  systemPrompt?: string; // Extracted system prompt
+  systemPrompt?: unknown; // Extracted system prompt; can be text or provider content blocks
   messages: NormalizedMessage[]; // The conversation context sent TO the model
   tools?: NormalizedTool[]; // Tools defined in the request
 

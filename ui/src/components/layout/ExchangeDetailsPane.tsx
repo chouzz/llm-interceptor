@@ -28,7 +28,7 @@ import {
   YAxis,
 } from 'recharts';
 import type { NormalizedExchange } from '../../types';
-import { safeJSONStringify } from '../../utils/ui';
+import { extractTextContent, safeJSONStringify } from '../../utils/ui';
 import { ChatBubble } from '../chat/ChatBubble';
 import { CopyButton } from '../common/CopyButton';
 import { JSONViewer } from '../common/JSONViewer';
@@ -402,11 +402,11 @@ export const ExchangeDetailsPane: React.FC<{
                     <span className="w-12 h-[1px] bg-gray-200 dark:bg-slate-800"></span>
                   </div>
 
-                  {currentExchange.systemPrompt && (
+                  {currentExchange.systemPrompt != null && (
                     <ChatBubble message={{ role: 'system', content: currentExchange.systemPrompt }} />
                   )}
 
-                  {currentExchange.messages.length === 0 && !currentExchange.systemPrompt && (
+                  {currentExchange.messages.length === 0 && currentExchange.systemPrompt == null && (
                     <div className="text-sm text-slate-500 dark:text-slate-600 italic text-center py-8 bg-gray-50 dark:bg-slate-900/20 rounded-lg border border-dashed border-gray-200 dark:border-slate-800">
                       No prior context messages. This appears to be the start of a conversation.
                     </div>
@@ -455,17 +455,17 @@ export const ExchangeDetailsPane: React.FC<{
                         System Instruction
                       </span>
                     </div>
-                    {currentExchange.systemPrompt && (
+                    {currentExchange.systemPrompt != null && (
                       <CopyButton
-                        content={currentExchange.systemPrompt}
+                        content={extractTextContent(currentExchange.systemPrompt)}
                         className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700"
                       />
                     )}
                   </div>
                   <div className="p-6 overflow-x-auto bg-gray-50 dark:bg-transparent">
-                    {currentExchange.systemPrompt ? (
+                    {currentExchange.systemPrompt != null ? (
                       <pre className="text-sm font-mono text-slate-800 dark:text-slate-300 whitespace-pre-wrap leading-relaxed selection:bg-red-200 dark:selection:bg-red-900/30">
-                        {currentExchange.systemPrompt}
+                        {extractTextContent(currentExchange.systemPrompt)}
                       </pre>
                     ) : (
                       <div className="text-gray-500 dark:text-slate-500 italic text-sm text-center py-8">
