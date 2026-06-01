@@ -53,6 +53,10 @@ export function extractTextContent(content: unknown): string {
           return `[Tool Result: ${toolUseId}]\n${resultContent}`;
         }
 
+        if (type === 'thinking' && typeof block.thinking === 'string') {
+          return `[Thinking]\n${block.thinking}`;
+        }
+
         return JSON.stringify(block, null, 2);
       })
       .join('\n\n');

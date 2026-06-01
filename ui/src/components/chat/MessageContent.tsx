@@ -1,5 +1,5 @@
 import React from 'react';
-import { Zap } from 'lucide-react';
+import { Brain, Zap } from 'lucide-react';
 import { CopyButton } from '../common/CopyButton';
 import { ToolCallBlock } from './ToolCallBlock';
 
@@ -70,6 +70,36 @@ export const MessageContent: React.FC<{ content: unknown }> = React.memo(({ cont
                 <div className="font-mono text-emerald-800 dark:text-emerald-200/90 whitespace-pre-wrap break-words max-h-[500px] overflow-y-auto custom-scrollbar">
                   {renderedResult}
                 </div>
+              </div>
+            );
+          }
+          if (type === 'thinking') {
+            const thinking = typeof block.thinking === 'string' ? block.thinking : '';
+
+            return (
+              <div
+                key={idx}
+                className="text-xs border-l-2 border-violet-400 pl-3 py-2 my-2 bg-violet-50 dark:bg-violet-950/20 rounded-r overflow-hidden group/thinking"
+              >
+                <div className="font-bold text-violet-600 dark:text-violet-400 text-[10px] uppercase mb-1 flex items-center gap-2">
+                  <Brain size={10} />
+                  Thinking
+                  {thinking && (
+                    <CopyButton
+                      content={thinking}
+                      className="opacity-0 group-hover/thinking:opacity-100"
+                    />
+                  )}
+                </div>
+                {thinking ? (
+                  <div className="text-violet-800 dark:text-violet-200/90 whitespace-pre-wrap break-words max-h-[500px] overflow-y-auto custom-scrollbar italic">
+                    {thinking}
+                  </div>
+                ) : (
+                  <div className="text-violet-700 dark:text-violet-300/80 italic">
+                    No thinking content captured
+                  </div>
+                )}
               </div>
             );
           }
