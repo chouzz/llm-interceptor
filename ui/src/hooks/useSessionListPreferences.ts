@@ -8,8 +8,7 @@ function readInitialSortPreference(): boolean {
   }
 
   try {
-    const storedPreference = window.localStorage.getItem(SORT_ORDER_STORAGE_KEY);
-    return storedPreference === null ? true : storedPreference === 'true';
+    return window.localStorage.getItem(SORT_ORDER_STORAGE_KEY) !== 'false';
   } catch (error) {
     console.error('Failed to read session sort preference', error);
     return true;
