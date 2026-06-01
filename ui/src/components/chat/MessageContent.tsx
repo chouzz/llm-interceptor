@@ -74,7 +74,7 @@ export const MessageContent: React.FC<{ content: unknown }> = React.memo(({ cont
             );
           }
           if (type === 'thinking') {
-            const thinking = typeof block.thinking === 'string' ? block.thinking : '';
+            const thinking = typeof block.thinking === 'string' ? block.thinking.trim() : '';
 
             return (
               <div
