@@ -41,6 +41,7 @@ const App: React.FC = () => {
     selectedExchangeId,
     setSelectedExchangeId,
     deleteSession,
+    selectedExchange: currentExchange,
   } = useSessions({ apiBase: API_BASE, pollMs: 2000, isNewestFirst });
 
   const { annotations, setAnnotations, ensureLoaded, updateSessionNote, updateRequestNote } = useAnnotations({
@@ -61,11 +62,6 @@ const App: React.FC = () => {
       (ex) => stringToColor(ex.systemPromptKey) === systemPromptFilter
     );
   }, [currentSession, systemPromptFilter]);
-
-  const currentExchange = useMemo(
-    () => currentSession?.exchanges.find((e) => e.id === selectedExchangeId) ?? null,
-    [currentSession, selectedExchangeId]
-  );
 
   const handleDeleteSession = async (sessionId: string) => {
     const deleted = await deleteSession(sessionId);

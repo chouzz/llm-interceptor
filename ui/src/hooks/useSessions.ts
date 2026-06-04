@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Session, SessionSummary, WatchStatus } from '../types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Session, SessionSummary, WatchStatus, NormalizedExchange } from '../types';
 import { mergeExchangeDetail, normalizeExchangeDetail, normalizeSessionOverview } from '../utils';
 
 export function useSessions(options: { apiBase: string; pollMs?: number; isNewestFirst?: boolean }) {
@@ -20,6 +20,21 @@ export function useSessions(options: { apiBase: string; pollMs?: number; isNewes
   const exchangeRequestRef = useRef(0);
   const sessionAbortRef = useRef<AbortController | null>(null);
   const exchangeAbortRef = useRef<AbortController | null>(null);
+
+  const exchangesMap = useMemo(() => {
+    const map = new Map<string, NormalizedExchange>();
+    if (!currentSession) return map;
+    for (const exchange of currentSession.exchanges) {
+      map.set(exchange.id, exchange);
+    }
+    return map;
+  }, [currentSession]);
+
+  const selectedExchange = useMemo(() => {
+    if (!selectedExchangeId) return null;
+    return exchangesMap.get(selectedExchangeId) ?? null;
+  }, [exchangesMap, selectedExchangeId]);
+
 
   const fetchWatchStatus = useCallback(async () => {
     try {
@@ -213,13 +228,12 @@ export function useSessions(options: { apiBase: string; pollMs?: number; isNewes
   useEffect(() => {
     if (!selectedSessionId || !selectedExchangeId || !currentSession) return;
 
-    const selectedExchange = currentSession.exchanges.find((exchange) => exchange.id === selectedExchangeId);
     if (!selectedExchange || selectedExchange.hasFullDetails || !selectedExchange.sequenceId) {
       return;
     }
 
     fetchExchangeDetails(selectedSessionId, selectedExchange.id, selectedExchange.sequenceId);
-  }, [currentSession, fetchExchangeDetails, selectedExchangeId, selectedSessionId]);
+  }, [currentSession, fetchExchangeDetails, selectedExchangeId, selectedSessionId, selectedExchange]);
 
   // Auto-select a session once the list loads, and handle removed sessions.
   // Selection follows UI sort preference when no current valid selection exists.
@@ -250,6 +264,8 @@ export function useSessions(options: { apiBase: string; pollMs?: number; isNewes
   return {
     sessionList,
     currentSession,
+    exchangesMap,
+    selectedExchange,
     isLoadingList,
     isLoadingSession,
     loadingExchangeSequenceId,

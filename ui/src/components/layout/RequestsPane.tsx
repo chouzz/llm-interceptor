@@ -231,7 +231,6 @@ export const RequestsPane: React.FC<{
     onSelectExchange,
     onUpdateRequestNote,
     selectedExchangeId,
-    isCollapsed,
     selectedSessionId,
     setIsCollapsed,
     setSystemPromptFilter,

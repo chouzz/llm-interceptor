@@ -558,7 +558,7 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
                 usage = _normalize_usage_metrics(body.get("usage"))
                 if usage is not None:
                     # Response usage supersedes request usage to avoid double-counting
-                    total_tokens -= (request_usage.total_tokens if request_usage is not None else 0)
+                    total_tokens -= request_usage.total_tokens if request_usage is not None else 0
                     total_tokens += usage.total_tokens
                     summary.usage = usage
 
