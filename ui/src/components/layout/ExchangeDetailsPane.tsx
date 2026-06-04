@@ -115,17 +115,17 @@ export const ExchangeDetailsPane: React.FC<{
 
   const requestBodyText = useMemo(
     () => (currentExchange ? safeJSONStringify(currentExchange.rawRequest) : ''),
-    [currentExchange?.rawRequest]
+    [currentExchange]
   );
 
   const responseBodyText = useMemo(
     () => (currentExchange?.rawResponse ? safeJSONStringify(currentExchange.rawResponse) : ''),
-    [currentExchange?.rawResponse]
+    [currentExchange]
   );
 
   const systemPromptText = useMemo(
     () => (currentExchange?.systemPrompt != null ? extractTextContent(currentExchange.systemPrompt).trim() : ''),
-    [currentExchange?.systemPrompt]
+    [currentExchange]
   );
 
   const hasSystemPrompt = systemPromptText.length > 0;

@@ -334,9 +334,7 @@ class StreamMerger:
             block
             for _, block in sorted(
                 content_blocks.items(),
-                key=lambda x: (
-                    (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0]))
-                ),
+                key=lambda x: ((0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0]))),
             )
         ]
 
