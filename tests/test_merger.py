@@ -110,6 +110,18 @@ class TestExtractTextFromChunks:
         assert "OpenAI" in result
         assert "Raw" in result
 
+    def test_openai_delta_content_none(self, tmp_path: Path) -> None:
+        """Test handling delta.content=None in OpenAI streaming (reasoning models)."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {"content": {"choices": [{"delta": {"content": None, "tool_calls": None}}]}},
+            {"content": {"choices": [{"delta": {"content": "Hello"}}]}},
+        ]
+
+        result = merger._extract_text_from_chunks(chunks)
+        assert result == "Hello"
+
 
 class TestExtractToolCallsFromChunks:
     """Test tool call extraction from streaming chunks."""
@@ -465,6 +477,19 @@ class TestExtractToolCallsFromBody:
         merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
 
         body = {"content": [{"type": "text", "text": "Just text"}]}
+
+        result = merger._extract_tool_calls_from_body(body)
+        assert result == []
+
+    def test_openai_tool_calls_none(self, tmp_path: Path) -> None:
+        """Test handling message.tool_calls=None in OpenAI format."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        body = {
+            "choices": [
+                {"message": {"content": "Hello", "tool_calls": None}},
+            ]
+        }
 
         result = merger._extract_tool_calls_from_body(body)
         assert result == []
@@ -889,6 +914,56 @@ class TestRebuildOpenAIResponse:
         assert len(result["body"]["choices"]) == 2
         assert result["body"]["choices"][0]["message"]["content"] == "First"
         assert result["body"]["choices"][1]["message"]["content"] == "Second"
+
+    def test_rebuild_with_none_tool_calls_in_delta(self, tmp_path: Path) -> None:
+        """Test handling delta.tool_calls=None (common in reasoning models)."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "timestamp": "2025-01-01T12:00:00Z",
+                "content": {
+                    "id": "chatcmpl-001",
+                    "model": "deepseek-r1",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant", "content": None, "tool_calls": None},
+                        }
+                    ],
+                },
+            },
+            {
+                "content": {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "reasoning_content": "Let me think...",
+                                "content": None,
+                                "tool_calls": None,
+                            },
+                        }
+                    ],
+                },
+            },
+            {
+                "content": {
+                    "choices": [{"index": 0, "delta": {"content": "Hello!", "tool_calls": None}}],
+                },
+            },
+            {
+                "content": {
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                },
+            },
+        ]
+
+        result = merger._rebuild_openai_response("req_001", chunks, {})
+
+        assert result["type"] == "response"
+        assert result["body"]["choices"][0]["message"]["content"] == "Hello!"
 
 
 class TestStreamMergerIntegration:
