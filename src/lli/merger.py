@@ -425,7 +425,7 @@ class StreamMerger:
                     choices_content[index].append(delta["content"])
 
                 # Accumulate tool calls
-                if "tool_calls" in delta:
+                if "tool_calls" in delta and delta["tool_calls"] is not None:
                     for tc in delta["tool_calls"]:
                         tc_index = tc.get("index", 0)
                         if "id" in tc:
@@ -525,7 +525,7 @@ class StreamMerger:
                 if "choices" in content:
                     for choice in content.get("choices", []):
                         delta = choice.get("delta", {})
-                        if "content" in delta:
+                        if "content" in delta and delta["content"] is not None:
                             text_parts.append(delta["content"])
 
                 # Raw text in content
@@ -662,8 +662,8 @@ class StreamMerger:
         if "choices" in body:
             for choice in body.get("choices", []):
                 message = choice.get("message", {})
-                if "tool_calls" in message:
-                    for tc in message.get("tool_calls", []):
+                if "tool_calls" in message and message["tool_calls"] is not None:
+                    for tc in message["tool_calls"]:
                         tool_calls.append(
                             ToolCall(
                                 id=tc.get("id", ""),
