@@ -105,14 +105,14 @@ export const RequestsPane: React.FC<{
   }, [filteredExchanges, isCollapsed]);
 
   const handleItemHeightChange = useCallback((exchangeId: string, height: number) => {
-    const nextHeight = Math.max(Math.ceil(height), estimatedRowHeight);
+    const nextHeight = Math.ceil(height);
     if (itemHeightsRef.current[exchangeId] === nextHeight) {
       return;
     }
 
     itemHeightsRef.current[exchangeId] = nextHeight;
     setHeightVersion((version) => version + 1);
-  }, [estimatedRowHeight]);
+  }, []);
 
   // Memoize computed values
   const requestCount = useMemo(() => filteredExchanges.length, [filteredExchanges.length]);
