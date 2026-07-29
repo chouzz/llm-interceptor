@@ -69,6 +69,14 @@ export const RequestsPane: React.FC<{
     return colors;
   }, [filteredExchanges]);
 
+  // Stable identity key for the exchange list so that lazy detail merges (which
+  // create a new array reference) do NOT reset measured heights. Reset only when
+  // the actual set of exchanges changes (session switch, filter, new request).
+  const exchangeListKey = useMemo(
+    () => filteredExchanges.map((exchange) => exchange.id).join('|'),
+    [filteredExchanges]
+  );
+
   // Memoize callback functions to prevent unnecessary re-renders
   const handleToggleCollapse = useCallback(() => {
     setIsCollapsed(!isCollapsed);
@@ -102,7 +110,7 @@ export const RequestsPane: React.FC<{
     setHeightVersion((version) => version + 1);
     setScrollTop(0);
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-  }, [filteredExchanges, isCollapsed]);
+  }, [exchangeListKey, isCollapsed]);
 
   const handleItemHeightChange = useCallback((exchangeId: string, height: number) => {
     const nextHeight = Math.ceil(height);
