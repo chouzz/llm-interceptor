@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.5] - 2026-07-29
+
+### Fixed
+
+- **Excessive spacing in request list (recurrence)** - Measured request heights are no longer reset when exchange details are lazily merged into the session, which previously caused items to fall back to the estimated row height and re-introduce large gaps between requests (#89)
+
+
 ## [2.9.4] - 2026-07-28
 
 ### Fixed
