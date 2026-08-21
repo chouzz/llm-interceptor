@@ -270,6 +270,48 @@ lli config --proxy-help   # Proxy configuration instructions
 lli config --show         # Show current configuration
 ```
 
+### `lli run`
+
+Run a command with automatic, fully non-interactive LLM traffic capture —
+ideal for scripted agent experiments (`claude -p`, `codex exec`, ...).
+
+`lli run` starts a private ephemeral proxy, spawns the command with
+`HTTP(S)_PROXY` / CA environment variables injected, and when the command
+exits it drains in-flight responses, processes the session (merge + split
+into per-exchange request/response JSON files), and writes run metadata.
+`lli` exits with the command's exit code, so it can be composed in scripts
+and CI.
+
+```bash
+lli run -- claude -p "fix the failing test"
+
+lli run --label codex -- codex exec "review src/"
+
+# Custom provider + output location
+lli run --include "*my-llm.example.com*" --output-dir ./experiments -- curl -s https://api.example.com/health
+```
+
+Each run is isolated in its own directory (default: `<traces>/runs/`):
+
+```
+traces/runs/run_20260101_120000_codex/
+├── run_meta.json              # command, exit code, duration, session id, ...
+├── all_captured_*.jsonl       # raw captured records (replayable)
+└── session_20260101_120000/   # processed session
+    ├── session_meta.json
+    ├── 001_request_2026-01-01_12-00-00.json
+    ├── 001_response_2026-01-01_12-00-00.json
+    └── ...
+```
+
+Notes:
+
+- The mitmproxy CA certificate (`~/.mitmproxy/mitmproxy-ca-cert.pem`) is
+  exported to the child via `NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE` /
+  `REQUESTS_CA_BUNDLE`, so Node- and OpenSSL-based agents work out of the box.
+- After the command exits, LLI waits up to `--drain-timeout` (default 15s)
+  for in-flight streaming responses to complete before finalizing.
+
 ### `lli stats`
 
 Display statistics for a captured trace file.

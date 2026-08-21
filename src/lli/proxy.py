@@ -219,6 +219,14 @@ class WatchAddon:
         if "text/event-stream" in content_type:
             self._logger.debug("Detected streaming response for %s", url)
 
+    def in_flight_count(self) -> int:
+        """Return the number of in-flight flows (request seen, response pending).
+
+        Used by the run wrapper to drain pending responses before
+        finalizing a capture session.
+        """
+        return len(self._request_ids)
+
     def tls_failed_server(self, data: TlsData) -> None:
         """Log TLS handshake failures with server context."""
         server = data.conn
@@ -357,20 +365,8 @@ class WatchAddon:
         self._request_sessions.pop(flow_id, None)
 
 
-async def run_watch_proxy(
-    config: LLIConfig,
-    watch_manager: WatchManager,
-) -> None:
-    """
-    Start the mitmproxy server in watch mode.
-
-    Args:
-        config: LLI configuration
-        watch_manager: WatchManager instance for session management
-    """
-    logger = get_logger()
-    logger.info("Starting watch proxy on %s:%d", config.proxy.host, config.proxy.port)
-
+def _suppress_mitmproxy_logs() -> None:
+    """Keep mitmproxy's own loggers quiet and out of our console output."""
     mitmproxy_logger = logging.getLogger("mitmproxy")
     mitmproxy_logger.setLevel(logging.WARNING)
     mitmproxy_logger.propagate = False
@@ -378,6 +374,28 @@ async def run_watch_proxy(
     mitmproxy_console_logger = logging.getLogger("mitmproxy.console")
     mitmproxy_console_logger.setLevel(logging.WARNING)
     mitmproxy_console_logger.propagate = False
+
+
+def create_watch_master(
+    config: LLIConfig,
+    watch_manager: WatchManager,
+) -> tuple[DumpMaster, WatchAddon]:
+    """
+    Create a configured DumpMaster with the watch addon attached.
+
+    The master is not started yet; callers must run ``master.run()``
+    (typically as an asyncio task) and call ``master.shutdown()`` to stop.
+
+    Args:
+        config: LLI configuration
+        watch_manager: WatchManager instance for session management
+
+    Returns:
+        Tuple of (master, addon)
+    """
+    logger = get_logger()
+
+    _suppress_mitmproxy_logs()
 
     url_filter = URLFilter(config.filter)
 
@@ -410,7 +428,7 @@ async def run_watch_proxy(
             ssl_verify_upstream_trusted_ca=str(Path(config.proxy.upstream_ca_cert).resolve())
         )
 
-    # Create and run DumpMaster
+    # Create DumpMaster
     # Suppress mitmproxy's default console output by redirecting stdout temporarily
     null_stream = StringIO()
 
@@ -429,6 +447,25 @@ async def run_watch_proxy(
                 master.addons.remove(addon_name)
     except Exception:
         pass
+
+    return master, addon
+
+
+async def run_watch_proxy(
+    config: LLIConfig,
+    watch_manager: WatchManager,
+) -> None:
+    """
+    Start the mitmproxy server in watch mode.
+
+    Args:
+        config: LLI configuration
+        watch_manager: WatchManager instance for session management
+    """
+    logger = get_logger()
+    logger.info("Starting watch proxy on %s:%d", config.proxy.host, config.proxy.port)
+
+    master, _ = create_watch_master(config, watch_manager)
 
     logger.info("Watch proxy initialized, monitoring traffic...")
 
