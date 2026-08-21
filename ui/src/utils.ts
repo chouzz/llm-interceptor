@@ -52,14 +52,29 @@ const isOpenAIFormat = (body: unknown): boolean => {
   return false;
 };
 
+const RESPONSES_URL_RE = /\/responses(?:\/|\?|#|$)/;
+
 /**
  * Detects if the request body follows the OpenAI Responses API structure
  * (prompt carried in `input` instead of `messages`).
+ *
+ * When the request URL is available it takes priority: embeddings requests
+ * also carry a top-level `input` without `messages` and must not be treated
+ * as Responses chat payloads. Without a URL, fall back to body heuristics
+ * that require Responses-specific fields beyond a bare `input`.
  */
-const isOpenAIResponsesFormat = (body: unknown): boolean => {
+const isOpenAIResponsesFormat = (body: unknown, url?: string): boolean => {
+  if (typeof url === 'string' && url) {
+    return RESPONSES_URL_RE.test(url);
+  }
   if (!isRecord(body)) return false;
   if (!('input' in body) || 'messages' in body) return false;
-  return typeof body.input === 'string' || Array.isArray(body.input);
+  if (typeof body.input !== 'string' && !Array.isArray(body.input)) return false;
+  return (
+    typeof body.instructions === 'string' ||
+    'previous_response_id' in body ||
+    'max_output_tokens' in body
+  );
 };
 
 /**
@@ -430,7 +445,7 @@ const normalizeExchangePair = (
     isRecord(rawResponse?.body) && 'usage' in rawResponse.body ? rawResponse.body.usage : undefined;
 
   try {
-    const responsesFormat = isOpenAIResponsesFormat(rawRequest.body);
+    const responsesFormat = isOpenAIResponsesFormat(rawRequest.body, rawRequest.url);
     const openAIFormat = !responsesFormat && isOpenAIFormat(rawRequest.body);
     const normalized = responsesFormat
       ? normalizeOpenAIResponsesRequest(rawRequest.body)
@@ -447,7 +462,13 @@ const normalizeExchangePair = (
           if (item.type === 'message') {
             const content = Array.isArray(item.content) ? item.content : [];
             content.forEach((part) => {
-              if (isRecord(part) && typeof part.text === 'string' && part.text) {
+              if (!isRecord(part)) return;
+              // Refusal parts carry the text in `refusal` instead of `text`
+              if (part.type === 'refusal' && typeof part.refusal === 'string' && part.refusal) {
+                blocks.push({ type: 'text', text: part.refusal });
+                return;
+              }
+              if (typeof part.text === 'string' && part.text) {
                 blocks.push({ type: 'text', text: part.text });
               }
             });

@@ -5,12 +5,50 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from lli.server import create_app
+from lli.server import _is_openai_responses_request, create_app
 from lli.watch import WatchManager
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_is_openai_responses_request_url_gating() -> None:
+    """URL takes priority: embeddings bodies also carry a bare `input` field."""
+    responses_body = {
+        "model": "gpt-5-mini",
+        "input": "Hello",
+        "instructions": "You are helpful.",
+    }
+    embeddings_body = {"model": "text-embedding-3-small", "input": "The food was delicious"}
+
+    assert _is_openai_responses_request(responses_body, "https://api.openai.com/v1/responses")
+    assert _is_openai_responses_request(
+        {"input": [{"type": "message", "role": "user", "content": "hi"}]},
+        "https://api.openai.com/v1/responses",
+    )
+    # Embeddings URLs are never classified as Responses chat requests
+    assert not _is_openai_responses_request(embeddings_body, "https://api.openai.com/v1/embeddings")
+    assert not _is_openai_responses_request(
+        embeddings_body, "https://api.openai.com/v1/chat/completions"
+    )
+
+
+def test_is_openai_responses_request_body_fallback_requires_signals() -> None:
+    """Without a URL, a bare `input` payload (embeddings-like) is not enough."""
+    assert _is_openai_responses_request(
+        {"model": "gpt-5-mini", "input": "Hello", "instructions": "You are helpful."}
+    )
+    assert _is_openai_responses_request({"input": "Hello", "max_output_tokens": 1024})
+    assert _is_openai_responses_request({"input": "Hello", "previous_response_id": "resp_1"})
+    # Embeddings-like body has no Responses-specific fields
+    assert not _is_openai_responses_request(
+        {"model": "text-embedding-3-small", "input": "The food was delicious"}
+    )
+    # Chat completions style bodies are never Responses requests
+    assert not _is_openai_responses_request(
+        {"model": "gpt-4", "messages": [{"role": "user", "content": "hi"}]}
+    )
 
 
 def test_api_sessions_include_duration_and_total_latency(tmp_path: Path) -> None:

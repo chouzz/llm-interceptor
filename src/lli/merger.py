@@ -559,6 +559,8 @@ class StreamMerger:
         items: dict[int, dict[str, Any]] = {}
         # Accumulated output_text fragments: (output_index, content_index) -> parts
         text_parts: dict[tuple[int, int], list[str]] = defaultdict(list)
+        # Accumulated refusal fragments: (output_index, content_index) -> parts
+        refusal_parts: dict[tuple[int, int], list[str]] = defaultdict(list)
         # Accumulated function call argument fragments: output_index -> parts
         tool_args_parts: dict[int, list[str]] = defaultdict(list)
 
@@ -647,8 +649,8 @@ class StreamMerger:
                 content_list = item.setdefault("content", [])
                 while len(content_list) <= content_index:
                     content_list.append({"type": "output_text", "text": "", "annotations": []})
-                if not content_list[content_index]:
-                    content_list[content_index] = copy.deepcopy(part)
+                # The event payload is authoritative for this content index
+                content_list[content_index] = copy.deepcopy(part)
 
             elif event_type == "response.output_text.delta":
                 output_index = content.get("output_index", 0)
@@ -662,6 +664,20 @@ class StreamMerger:
                 delta = content.get("delta", "")
                 if isinstance(delta, str) and delta:
                     tool_args_parts[output_index].append(delta)
+
+            elif event_type == "response.refusal.delta":
+                output_index = content.get("output_index", 0)
+                content_index = content.get("content_index", 0)
+                delta = content.get("delta", "")
+                if isinstance(delta, str) and delta:
+                    refusal_parts[(output_index, content_index)].append(delta)
+
+            elif event_type == "response.refusal.done":
+                # Complete refusal replaces accumulated fragments
+                refusal = content.get("refusal", "")
+                if isinstance(refusal, str):
+                    key = (content.get("output_index", 0), content.get("content_index", 0))
+                    refusal_parts[key] = [refusal]
 
             elif event_type == "response.function_call_arguments.done":
                 # Complete arguments replace accumulated fragments
@@ -682,6 +698,19 @@ class StreamMerger:
             part = content_list[content_index]
             if isinstance(part, dict) and not part.get("text"):
                 part["text"] = "".join(parts)
+
+        # Merge accumulated refusal fragments into message items
+        for (output_index, content_index), parts in refusal_parts.items():
+            item = items.setdefault(
+                output_index,
+                {"type": "message", "role": "assistant", "status": "in_progress", "content": []},
+            )
+            content_list = item.setdefault("content", [])
+            while len(content_list) <= content_index:
+                content_list.append({"type": "refusal", "refusal": "", "annotations": []})
+            part = content_list[content_index]
+            if isinstance(part, dict) and not part.get("refusal"):
+                part["refusal"] = "".join(parts)
 
         # Merge accumulated function call arguments into items
         for output_index, parts in tool_args_parts.items():
@@ -729,7 +758,10 @@ class StreamMerger:
 
                 # OpenAI Responses API stream events
                 if isinstance(content_type, str) and content_type.startswith("response."):
-                    if content_type == "response.output_text.delta":
+                    if content_type in (
+                        "response.output_text.delta",
+                        "response.refusal.delta",
+                    ):
                         delta_text = content.get("delta", "")
                         if isinstance(delta_text, str) and delta_text:
                             text_parts.append(delta_text)
@@ -894,8 +926,13 @@ class StreamMerger:
                 if not isinstance(item, dict) or item.get("type") != "message":
                     continue
                 for part in item.get("content", []) or []:
-                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    if not isinstance(part, dict):
+                        continue
+                    if isinstance(part.get("text"), str):
                         texts.append(part["text"])
+                    elif isinstance(part.get("refusal"), str):
+                        # Refusal parts carry the text in `refusal`
+                        texts.append(part["refusal"])
             return "".join(texts)
 
         # Fallback: JSON dump

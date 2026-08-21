@@ -227,17 +227,34 @@ def _is_openai_format(body: object) -> bool:
     return False
 
 
-def _is_openai_responses_request(body: object) -> bool:
+RESPONSES_URL_RE = re.compile(r"/responses(?:/|\?|#|$)")
+
+
+def _is_openai_responses_request(body: object, url: str | None = None) -> bool:
     """Best-effort detection for OpenAI Responses API request payloads.
 
     Responses API requests carry the prompt in ``input`` (a string or a list
     of items) instead of ``messages``.
+
+    When the request URL is available it takes priority: embeddings requests
+    also carry a top-level ``input`` without ``messages`` and must not be
+    treated as Responses chat payloads. Without a URL, fall back to
+    body-only heuristics that require Responses-specific fields beyond a
+    bare ``input``.
     """
     if not isinstance(body, dict):
         return False
-    if "messages" in body or "input" not in body:
+    if "messages" in body:
         return False
-    return isinstance(body.get("input"), list | str)
+
+    if isinstance(url, str) and url:
+        return bool(RESPONSES_URL_RE.search(url))
+
+    if "input" not in body or not isinstance(body.get("input"), list | str):
+        return False
+
+    # Body-only fallback: embeddings bodies have none of these fields
+    return any(key in body for key in ("instructions", "previous_response_id", "max_output_tokens"))
 
 
 def _stringify_content(value: object) -> str:
@@ -265,12 +282,12 @@ def _stringify_content(value: object) -> str:
     return str(value)
 
 
-def _extract_system_prompt_key(body: object) -> str:
+def _extract_system_prompt_key(body: object, url: str | None = None) -> str:
     """Extract a stable system prompt key without sending full raw payloads."""
     if not isinstance(body, dict):
         return ""
 
-    if _is_openai_responses_request(body):
+    if _is_openai_responses_request(body, url):
         raw_key = _stringify_content(body.get("instructions")).strip()
         return hashlib.sha1(raw_key.encode("utf-8")).hexdigest() if raw_key else ""
 
@@ -295,13 +312,13 @@ def _extract_system_prompt_key(body: object) -> str:
     return hashlib.sha1(raw_key.encode("utf-8")).hexdigest() if raw_key else ""
 
 
-def _extract_request_tool_names(body: object) -> list[str]:
+def _extract_request_tool_names(body: object, url: str | None = None) -> list[str]:
     """Collect tool-use names embedded in request/response content."""
     if not isinstance(body, dict):
         return []
 
     names: list[str] = []
-    if _is_openai_responses_request(body):
+    if _is_openai_responses_request(body, url):
         tools = body.get("tools")
         if isinstance(tools, list):
             for tool in tools:
@@ -559,9 +576,10 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
                 if isinstance(payload.get("method"), str) and payload.get("method")
                 else summary.request_method
             )
-            summary.request_url = (
-                payload.get("url") if isinstance(payload.get("url"), str) else summary.request_url
-            )
+            raw_url = payload.get("url")
+            request_url = raw_url if isinstance(raw_url, str) and raw_url else None
+            if request_url:
+                summary.request_url = request_url
 
             body = payload.get("body")
             if isinstance(body, dict):
@@ -569,11 +587,11 @@ def _build_session_cache_entry(session_dir: Path) -> SessionCacheEntry:
                 if isinstance(model, str) and model:
                     summary.model = model
 
-                system_prompt_key = _extract_system_prompt_key(body)
+                system_prompt_key = _extract_system_prompt_key(body, request_url)
                 if system_prompt_key:
                     summary.system_prompt_key = system_prompt_key
 
-                for name in _extract_request_tool_names(body):
+                for name in _extract_request_tool_names(body, request_url):
                     if name not in summary.tool_names:
                         summary.tool_names.append(name)
 

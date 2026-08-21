@@ -183,6 +183,24 @@ class TestExtractTextFromChunks:
         result = merger._extract_text_from_chunks(chunks)
         assert result == "Hello World!"
 
+    def test_openai_responses_refusal_delta(self, tmp_path: Path) -> None:
+        """Test extracting text from response.refusal.delta events."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.refusal.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "I cannot comply.",
+                }
+            },
+        ]
+
+        result = merger._extract_text_from_chunks(chunks)
+        assert result == "I cannot comply."
+
 
 class TestExtractToolCallsFromChunks:
     """Test tool call extraction from streaming chunks."""
@@ -520,6 +538,32 @@ class TestExtractTextFromBody:
 
         result = merger._extract_text_from_body(body)
         assert result == "Hello World!"
+
+    def test_openai_responses_refusal_part(self, tmp_path: Path) -> None:
+        """Test extracting text from refusal parts in Responses API output."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        body = {
+            "id": "resp_1",
+            "object": "response",
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "refusal",
+                            "refusal": "I cannot help with that.",
+                            "annotations": [],
+                        }
+                    ],
+                },
+            ],
+        }
+
+        result = merger._extract_text_from_body(body)
+        assert result == "I cannot help with that."
 
     def test_fallback_to_json_dump(self, tmp_path: Path) -> None:
         """Test fallback to JSON dump for unknown formats."""
@@ -1553,6 +1597,99 @@ class TestRebuildOpenAIResponsesResponse:
 
         function_call = result["body"]["output"][0]
         assert function_call["arguments"] == '{"city": "SF"}'
+
+    def test_rebuild_refusal_from_deltas(self, tmp_path: Path) -> None:
+        """Test rebuilding a refusal message from response.refusal.delta events."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [],
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.content_part.added",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "part": {"type": "refusal", "refusal": "", "annotations": []},
+                }
+            },
+            {
+                "content": {
+                    "type": "response.refusal.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "I cannot help ",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.refusal.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "with that request.",
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_refusal", chunks, {})
+
+        message = result["body"]["output"][0]
+        assert message["type"] == "message"
+        part = message["content"][0]
+        assert part["type"] == "refusal"
+        assert part["refusal"] == "I cannot help with that request."
+
+    def test_rebuild_refusal_done_replaces_deltas(self, tmp_path: Path) -> None:
+        """Test that response.refusal.done is authoritative over accumulated deltas."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [{"type": "refusal", "refusal": "", "annotations": []}],
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.refusal.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "Partial...",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.refusal.done",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "refusal": "Full refusal text.",
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_refusal", chunks, {})
+
+        part = result["body"]["output"][0]["content"][0]
+        assert part["refusal"] == "Full refusal text."
 
 
 class TestStreamMergerIntegration:
