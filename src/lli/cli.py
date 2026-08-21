@@ -641,6 +641,145 @@ def watch(
             console.print(f"[green]Global log:[/] {watch_manager.global_log_path}")
 
 
+@main.command()
+@click.argument("command", nargs=-1, required=True)
+@click.option(
+    "--label",
+    "-l",
+    default=None,
+    help="Label for the run directory (e.g. --label codex gives run_<ts>_codex)",
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    "output_root",
+    type=click.Path(),
+    default=None,
+    help="Root directory for run outputs (default: <traces>/runs)",
+)
+@click.option(
+    "--include",
+    "-i",
+    multiple=True,
+    help="Additional URL patterns to include (glob pattern, e.g. '*api.example.com*')",
+)
+@click.option(
+    "--exclude",
+    "-x",
+    multiple=True,
+    help="URL patterns to exclude (glob). Excluded URLs won't be captured and will also be "
+    "bypassed via mitmproxy ignore_hosts (best-effort).",
+)
+@click.option(
+    "--drain-timeout",
+    type=float,
+    default=15.0,
+    show_default=True,
+    help="Seconds to wait for in-flight responses after the command exits",
+)
+@click.option(
+    "--upstream-ca-cert",
+    type=click.Path(exists=False),
+    default=None,
+    help="Path to PEM or CA bundle for trusting upstream (e.g. corporate proxy) certificates",
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Enable debug mode with verbose logging",
+)
+@click.pass_context
+def run(
+    ctx: click.Context,
+    command: tuple[str, ...],
+    label: str | None,
+    output_root: str | None,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    drain_timeout: float,
+    upstream_ca_cert: str | None,
+    debug: bool,
+) -> None:
+    """
+    Run a command with automatic LLM traffic capture (no keypresses needed).
+
+    Starts an ephemeral capture proxy, spawns COMMAND with proxy and CA
+    environment variables injected, and when the command exits: drains
+    in-flight responses, processes the session (merge + split into
+    per-exchange request/response JSON files), and writes run metadata.
+    Exits with the command's exit code.
+
+    Each run is isolated in its own directory:
+
+        <output-dir>/run_<timestamp>[_<label>]/
+            run_meta.json
+            session_<...>/ (per-exchange 00N_request/00N_response JSONs)
+
+    Examples:
+
+        lli run -- claude -p "fix the failing test"
+
+        lli run --label codex -- codex exec "review src/"
+
+        lli run --include "*my-llm.example.com*" -- curl -s https://api.example.com/health
+    """
+    from lli.runner import run_wrapped_command
+
+    config = load_config(ctx.obj.get("config_path"))
+
+    if upstream_ca_cert is not None:
+        config.proxy.upstream_ca_cert = upstream_ca_cert
+
+    for pattern in include:
+        config.filter.include_globs.append(pattern)
+
+    for pattern in exclude:
+        config.filter.exclude_globs.append(pattern)
+        config.proxy.no_proxy = config.proxy.no_proxy or []
+        config.proxy.no_proxy.append(_glob_to_regex(pattern))
+
+    if debug:
+        config.logging.level = "DEBUG"
+
+    setup_logger(config.logging.level, config.logging.log_file)
+
+    cert_info = get_cert_info()
+    if not cert_info["exists"]:
+        console.print(
+            "[yellow]⚠ mitmproxy CA certificate not found.[/]\n"
+            "  It will be generated on first run; HTTPS interception may fail\n"
+            "  for the wrapped command until it exists.\n"
+        )
+
+    console.print(f"[cyan]▶ lli run:[/] {' '.join(command)}")
+
+    try:
+        result = asyncio.run(
+            run_wrapped_command(
+                list(command),
+                config=config,
+                label=label,
+                output_root=output_root,
+                drain_timeout=drain_timeout,
+            )
+        )
+    except Exception as e:
+        console.print(f"[red]Run failed:[/] {e}")
+        sys.exit(1)
+
+    console.print()
+    status = "interrupted" if result.interrupted else "finished"
+    console.print(
+        f"[green]✔[/] Run [cyan]{result.run_dir.name}[/] {status} "
+        f"(exit code {result.exit_code}, {result.requests_captured} requests captured)"
+    )
+    if result.session_dir is not None:
+        console.print(f"  Session: [cyan]{result.session_dir}[/]")
+    console.print(f"  Metadata: [cyan]{result.run_dir / 'run_meta.json'}[/]")
+
+    sys.exit(result.exit_code)
+
+
 def _display_watch_banner(
     port: int,
     output_dir: str,
