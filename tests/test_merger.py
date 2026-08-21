@@ -122,6 +122,85 @@ class TestExtractTextFromChunks:
         result = merger._extract_text_from_chunks(chunks)
         assert result == "Hello"
 
+    def test_openai_responses_delta_format(self, tmp_path: Path) -> None:
+        """Test extracting text from OpenAI Responses API output_text deltas."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {"content": {"type": "response.created", "response": {"id": "resp_1"}}},
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "Hello ",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "World!",
+                }
+            },
+        ]
+
+        result = merger._extract_text_from_chunks(chunks)
+        assert result == "Hello World!"
+
+    def test_openai_responses_done_event_not_double_counted(self, tmp_path: Path) -> None:
+        """Test that output_text.done events do not duplicate accumulated deltas."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "Hello ",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "World!",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_text.done",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "text": "Hello World!",
+                }
+            },
+        ]
+
+        result = merger._extract_text_from_chunks(chunks)
+        assert result == "Hello World!"
+
+    def test_openai_responses_refusal_delta(self, tmp_path: Path) -> None:
+        """Test extracting text from response.refusal.delta events."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.refusal.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "I cannot comply.",
+                }
+            },
+        ]
+
+        result = merger._extract_text_from_chunks(chunks)
+        assert result == "I cannot comply."
+
 
 class TestExtractToolCallsFromChunks:
     """Test tool call extraction from streaming chunks."""
@@ -295,6 +374,86 @@ class TestExtractToolCallsFromChunks:
         result = merger._extract_tool_calls_from_chunks(chunks)
         assert result == []
 
+    def test_openai_responses_function_call_streaming(self, tmp_path: Path) -> None:
+        """Test extracting tool calls from OpenAI Responses API streaming format."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "arguments": "",
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.function_call_arguments.delta",
+                    "output_index": 0,
+                    "delta": '{"city"',
+                }
+            },
+            {
+                "content": {
+                    "type": "response.function_call_arguments.delta",
+                    "output_index": 0,
+                    "delta": ': "SF"}',
+                }
+            },
+        ]
+
+        result = merger._extract_tool_calls_from_chunks(chunks)
+
+        assert len(result) == 1
+        assert result[0].id == "call_1"
+        assert result[0].name == "get_weather"
+        assert result[0].input == {"city": "SF"}
+
+    def test_openai_responses_item_done_provides_complete_arguments(self, tmp_path: Path) -> None:
+        """Test that output_item.done carries the complete function call."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "arguments": "",
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "arguments": '{"city": "SF"}',
+                    },
+                }
+            },
+        ]
+
+        result = merger._extract_tool_calls_from_chunks(chunks)
+
+        assert len(result) == 1
+        assert result[0].id == "call_1"
+        assert result[0].input == {"city": "SF"}
+
 
 class TestExtractTextFromBody:
     """Test text extraction from non-streaming response bodies."""
@@ -348,6 +507,63 @@ class TestExtractTextFromBody:
 
         result = merger._extract_text_from_body(body)
         assert result == "First choiceSecond choice"
+
+    def test_openai_responses_output_format(self, tmp_path: Path) -> None:
+        """Test extracting text from OpenAI Responses API output items."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        body = {
+            "id": "resp_1",
+            "object": "response",
+            "output": [
+                {"type": "reasoning", "id": "rs_1", "summary": []},
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "output_text", "text": "Hello ", "annotations": []},
+                        {"type": "output_text", "text": "World!", "annotations": []},
+                    ],
+                },
+                {
+                    "type": "function_call",
+                    "id": "fc_1",
+                    "call_id": "call_1",
+                    "name": "get_weather",
+                    "arguments": "{}",
+                },
+            ],
+        }
+
+        result = merger._extract_text_from_body(body)
+        assert result == "Hello World!"
+
+    def test_openai_responses_refusal_part(self, tmp_path: Path) -> None:
+        """Test extracting text from refusal parts in Responses API output."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        body = {
+            "id": "resp_1",
+            "object": "response",
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "refusal",
+                            "refusal": "I cannot help with that.",
+                            "annotations": [],
+                        }
+                    ],
+                },
+            ],
+        }
+
+        result = merger._extract_text_from_body(body)
+        assert result == "I cannot help with that."
 
     def test_fallback_to_json_dump(self, tmp_path: Path) -> None:
         """Test fallback to JSON dump for unknown formats."""
@@ -494,6 +710,46 @@ class TestExtractToolCallsFromBody:
         result = merger._extract_tool_calls_from_body(body)
         assert result == []
 
+    def test_openai_responses_function_call_format(self, tmp_path: Path) -> None:
+        """Test extracting tool calls from OpenAI Responses API output items."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        body = {
+            "id": "resp_1",
+            "object": "response",
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Let me check."}],
+                },
+                {
+                    "type": "function_call",
+                    "id": "fc_1",
+                    "call_id": "call_1",
+                    "name": "get_weather",
+                    "arguments": '{"city": "SF"}',
+                },
+                {
+                    "type": "function_call",
+                    "id": "fc_2",
+                    "call_id": "call_2",
+                    "name": "get_time",
+                    "arguments": '{"tz": "UTC"}',
+                },
+            ],
+        }
+
+        result = merger._extract_tool_calls_from_body(body)
+
+        assert len(result) == 2
+        assert result[0].id == "call_1"
+        assert result[0].name == "get_weather"
+        assert result[0].input == '{"city": "SF"}'
+        assert result[1].id == "call_2"
+        assert result[1].name == "get_time"
+
 
 class TestDetectApiFormat:
     """Test API format detection from chunks."""
@@ -541,6 +797,39 @@ class TestDetectApiFormat:
 
         result = merger._detect_api_format(chunks)
         assert result == "openai"
+
+    def test_detect_openai_responses_created_event(self, tmp_path: Path) -> None:
+        """Test detecting OpenAI Responses format from response.created."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.created",
+                    "response": {"id": "resp_1", "status": "in_progress"},
+                }
+            },
+        ]
+
+        result = merger._detect_api_format(chunks)
+        assert result == "openai_responses"
+
+    def test_detect_openai_responses_output_text_delta(self, tmp_path: Path) -> None:
+        """Test detecting OpenAI Responses format from output_text.delta."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "delta": "Hello",
+                }
+            },
+        ]
+
+        result = merger._detect_api_format(chunks)
+        assert result == "openai_responses"
 
     def test_detect_default_anthropic(self, tmp_path: Path) -> None:
         """Test default to anthropic for unknown format."""
@@ -966,6 +1255,443 @@ class TestRebuildOpenAIResponse:
         assert result["body"]["choices"][0]["message"]["content"] == "Hello!"
 
 
+class TestRebuildOpenAIResponsesResponse:
+    """Test rebuilding OpenAI Responses API response from streaming events."""
+
+    def test_rebuild_basic_text_response(self, tmp_path: Path) -> None:
+        """Test rebuilding a basic Responses API text response."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "timestamp": "2025-01-01T12:00:00Z",
+                "content": {
+                    "type": "response.created",
+                    "response": {
+                        "id": "resp_123",
+                        "object": "response",
+                        "created_at": 1757432000,
+                        "status": "in_progress",
+                        "model": "gpt-5-mini",
+                    },
+                },
+            },
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [],
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.content_part.added",
+                    "item_id": "msg_1",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "part": {"type": "output_text", "text": "", "annotations": []},
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "item_id": "msg_1",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "Hello ",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "item_id": "msg_1",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "World!",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {"type": "output_text", "text": "Hello World!", "annotations": []}
+                        ],
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_123",
+                        "object": "response",
+                        "status": "completed",
+                        "model": "gpt-5-mini",
+                        "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+                    },
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_123", chunks, {})
+
+        assert result["type"] == "response"
+        assert result["request_id"] == "req_123"
+        assert result["status_code"] == 200
+        assert result["body"]["object"] == "response"
+        assert result["body"]["id"] == "resp_123"
+        assert result["body"]["model"] == "gpt-5-mini"
+        assert result["body"]["status"] == "completed"
+        assert len(result["body"]["output"]) == 1
+        message = result["body"]["output"][0]
+        assert message["type"] == "message"
+        assert message["role"] == "assistant"
+        assert message["content"][0]["type"] == "output_text"
+        assert message["content"][0]["text"] == "Hello World!"
+        assert result["body"]["usage"]["total_tokens"] == 15
+        assert result["timestamp"] == "2025-01-01T12:00:00Z"
+
+    def test_rebuild_response_with_function_call(self, tmp_path: Path) -> None:
+        """Test rebuilding a Responses API response containing a function call."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "content": {
+                    "type": "response.created",
+                    "response": {
+                        "id": "resp_456",
+                        "object": "response",
+                        "status": "in_progress",
+                        "model": "gpt-5-mini",
+                    },
+                },
+            },
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "call_id": "call_abc",
+                        "name": "get_weather",
+                        "arguments": "",
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.function_call_arguments.delta",
+                    "item_id": "fc_1",
+                    "output_index": 0,
+                    "delta": '{"city"',
+                }
+            },
+            {
+                "content": {
+                    "type": "response.function_call_arguments.delta",
+                    "item_id": "fc_1",
+                    "output_index": 0,
+                    "delta": ': "Tokyo"}',
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "call_id": "call_abc",
+                        "name": "get_weather",
+                        "arguments": '{"city": "Tokyo"}',
+                        "status": "completed",
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_456",
+                        "status": "completed",
+                        "usage": {"input_tokens": 20, "output_tokens": 8, "total_tokens": 28},
+                    },
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_456", chunks, {})
+
+        assert len(result["body"]["output"]) == 1
+        function_call = result["body"]["output"][0]
+        assert function_call["type"] == "function_call"
+        assert function_call["call_id"] == "call_abc"
+        assert function_call["name"] == "get_weather"
+        assert function_call["arguments"] == '{"city": "Tokyo"}'
+        assert result["body"]["usage"]["total_tokens"] == 28
+
+    def test_rebuild_truncated_stream_from_deltas(self, tmp_path: Path) -> None:
+        """Test reconstruction when the stream ends without item.done/completed events."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "content": {
+                    "type": "response.created",
+                    "response": {
+                        "id": "resp_789",
+                        "object": "response",
+                        "status": "in_progress",
+                        "model": "gpt-5-mini",
+                    },
+                },
+            },
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [],
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "Partial ",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "answer",
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_789", chunks, {})
+
+        message = result["body"]["output"][0]
+        assert message["type"] == "message"
+        assert message["content"][0]["text"] == "Partial answer"
+        # No terminal event observed, status stays as the last known value
+        assert result["body"]["status"] == "in_progress"
+
+    def test_rebuild_multiple_output_items_preserves_order(self, tmp_path: Path) -> None:
+        """Test that reasoning, message, and function_call items keep output order."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "status_code": 200,
+                "content": {
+                    "type": "response.created",
+                    "response": {"id": "resp_000", "object": "response", "status": "in_progress"},
+                },
+            },
+            {
+                "content": {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": {"type": "reasoning", "id": "rs_1", "summary": []},
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_item.done",
+                    "output_index": 1,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [{"type": "output_text", "text": "Hi there"}],
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.output_item.done",
+                    "output_index": 2,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "call_id": "call_1",
+                        "name": "noop",
+                        "arguments": "{}",
+                    },
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_000", chunks, {})
+
+        output = result["body"]["output"]
+        assert len(output) == 3
+        assert output[0]["type"] == "reasoning"
+        assert output[1]["type"] == "message"
+        assert output[1]["content"][0]["text"] == "Hi there"
+        assert output[2]["type"] == "function_call"
+        assert output[2]["call_id"] == "call_1"
+
+    def test_rebuild_function_call_arguments_from_deltas_only(self, tmp_path: Path) -> None:
+        """Test argument accumulation when arguments.done is missing (truncated)."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "arguments": "",
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.function_call_arguments.delta",
+                    "output_index": 0,
+                    "delta": '{"city": ',
+                }
+            },
+            {
+                "content": {
+                    "type": "response.function_call_arguments.delta",
+                    "output_index": 0,
+                    "delta": '"SF"}',
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_trunc", chunks, {})
+
+        function_call = result["body"]["output"][0]
+        assert function_call["arguments"] == '{"city": "SF"}'
+
+    def test_rebuild_refusal_from_deltas(self, tmp_path: Path) -> None:
+        """Test rebuilding a refusal message from response.refusal.delta events."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [],
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.content_part.added",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "part": {"type": "refusal", "refusal": "", "annotations": []},
+                }
+            },
+            {
+                "content": {
+                    "type": "response.refusal.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "I cannot help ",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.refusal.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "with that request.",
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_refusal", chunks, {})
+
+        message = result["body"]["output"][0]
+        assert message["type"] == "message"
+        part = message["content"][0]
+        assert part["type"] == "refusal"
+        assert part["refusal"] == "I cannot help with that request."
+
+    def test_rebuild_refusal_done_replaces_deltas(self, tmp_path: Path) -> None:
+        """Test that response.refusal.done is authoritative over accumulated deltas."""
+        merger = StreamMerger(tmp_path / "in.jsonl", tmp_path / "out.jsonl")
+
+        chunks = [
+            {
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_1",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [{"type": "refusal", "refusal": "", "annotations": []}],
+                    },
+                }
+            },
+            {
+                "content": {
+                    "type": "response.refusal.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "Partial...",
+                }
+            },
+            {
+                "content": {
+                    "type": "response.refusal.done",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "refusal": "Full refusal text.",
+                }
+            },
+        ]
+
+        result = merger._rebuild_openai_responses_response("req_refusal", chunks, {})
+
+        part = result["body"]["output"][0]["content"][0]
+        assert part["refusal"] == "Full refusal text."
+
+
 class TestStreamMergerIntegration:
     """Integration tests for the full merge workflow with new output format."""
 
@@ -1149,6 +1875,149 @@ class TestStreamMergerIntegration:
         assert response_line["body"]["id"] == "chatcmpl-test"
         assert response_line["body"]["choices"][0]["message"]["content"] == "Hello from GPT!"
         assert response_line["body"]["choices"][0]["finish_reason"] == "stop"
+
+    def test_merge_openai_responses_streaming_outputs_request_response_lines(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that merge outputs request/response lines for the Responses API."""
+        input_file = tmp_path / "input.jsonl"
+        output_file = tmp_path / "output.jsonl"
+
+        request_id = "req_responses_789"
+
+        records = [
+            {
+                "type": "request",
+                "id": request_id,
+                "timestamp": "2025-01-01T12:00:00Z",
+                "method": "POST",
+                "url": "https://api.openai.com/v1/responses",
+                "body": {
+                    "model": "gpt-5-mini",
+                    "instructions": "You are helpful.",
+                    "input": "Say hi",
+                    "stream": True,
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 0,
+                "content": {
+                    "type": "response.created",
+                    "response": {
+                        "id": "resp_test",
+                        "object": "response",
+                        "status": "in_progress",
+                        "model": "gpt-5-mini",
+                    },
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 1,
+                "content": {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_test",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [],
+                    },
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 2,
+                "content": {
+                    "type": "response.output_text.delta",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "Hello from Responses!",
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 3,
+                "content": {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": {
+                        "type": "message",
+                        "id": "msg_test",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "Hello from Responses!",
+                                "annotations": [],
+                            }
+                        ],
+                    },
+                },
+            },
+            {
+                "type": "response_chunk",
+                "request_id": request_id,
+                "status_code": 200,
+                "chunk_index": 4,
+                "content": {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_test",
+                        "status": "completed",
+                        "usage": {"input_tokens": 12, "output_tokens": 6, "total_tokens": 18},
+                    },
+                },
+            },
+            {
+                "type": "response_meta",
+                "request_id": request_id,
+                "status_code": 200,
+                "total_latency_ms": 420,
+            },
+        ]
+
+        with open(input_file, "w", encoding="utf-8") as f:
+            for record in records:
+                f.write(json.dumps(record) + "\n")
+
+        merger = StreamMerger(input_file, output_file)
+        stats = merger.merge()
+
+        assert stats["streaming_requests"] == 1
+        assert stats["total_chunks_processed"] == 5
+
+        with open(output_file, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        assert len(lines) == 2
+
+        request_line = json.loads(lines[0])
+        assert request_line["type"] == "request"
+        assert request_line["id"] == request_id
+
+        response_line = json.loads(lines[1])
+        assert response_line["type"] == "response"
+        assert response_line["request_id"] == request_id
+        assert response_line["status_code"] == 200
+        assert response_line["latency_ms"] == 420
+        assert response_line["body"]["object"] == "response"
+        assert response_line["body"]["id"] == "resp_test"
+        assert response_line["body"]["status"] == "completed"
+        assert response_line["body"]["output"][0]["type"] == "message"
+        assert response_line["body"]["output"][0]["content"][0]["text"] == "Hello from Responses!"
+        assert response_line["body"]["usage"]["total_tokens"] == 18
 
     def test_merge_non_streaming_preserves_original_response(self, tmp_path: Path) -> None:
         """Test that non-streaming responses are preserved as-is."""

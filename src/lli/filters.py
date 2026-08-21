@@ -129,6 +129,7 @@ KNOWN_LLM_ENDPOINTS = {
     "openai": [
         r".*api\.openai\.com/v1/chat/completions.*",
         r".*api\.openai\.com/v1/completions.*",
+        r".*api\.openai\.com/v1/responses.*",
         r".*api\.openai\.com/v1/embeddings.*",
     ],
     "google": [

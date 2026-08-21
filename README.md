@@ -17,7 +17,7 @@
 - **Watch Mode** - Interactive continuous capture with session management
 - **Transparent Inspection** - See exactly what prompts are sent and what responses are received
 - **Streaming Support** - Captures both streaming (SSE) and non-streaming API responses
-- **Multi-Provider** - Works with Anthropic, OpenAI, Google, Groq, Together, Mistral, and more
+- **Multi-Provider** - Works with Anthropic, OpenAI (Chat Completions and Responses API), Google, Groq, Together, Mistral, and more
 - **Automatic Masking** - Protects API keys and sensitive data in logs
 - **Auto Processing** - Automatically merges and splits session data
 - **Cross-Platform** - Works on Windows, macOS, and Linux
@@ -285,7 +285,7 @@ LLI is pre-configured to capture traffic from:
 | Provider | API Domain |
 |----------|------------|
 | Anthropic | `api.anthropic.com` |
-| OpenAI | `api.openai.com` |
+| OpenAI (Chat Completions & Responses API) | `api.openai.com` |
 | Google | `generativelanguage.googleapis.com` |
 | Together | `api.together.xyz` |
 | Groq | `api.groq.com` |

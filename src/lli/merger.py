@@ -4,6 +4,7 @@ Stream merger utility for LLM Interceptor.
 Aggregates streaming response chunks into complete request-response pairs.
 """
 
+import copy
 import json
 from collections import defaultdict
 from datetime import datetime
@@ -121,9 +122,11 @@ class StreamMerger:
 
                     request_chunks = sorted(
                         chunks[request_id],
-                        key=lambda x: int(x.get("chunk_index", 0))
-                        if str(x.get("chunk_index", 0)).isdigit()
-                        else 0,
+                        key=lambda x: (
+                            int(x.get("chunk_index", 0))
+                            if str(x.get("chunk_index", 0)).isdigit()
+                            else 0
+                        ),
                     )
                     meta = metas.get(request_id, {})
 
@@ -131,6 +134,10 @@ class StreamMerger:
                     api_format = self._detect_api_format(request_chunks)
                     if api_format == "anthropic":
                         response = self._rebuild_anthropic_response(
+                            request_id, request_chunks, meta
+                        )
+                    elif api_format == "openai_responses":
+                        response = self._rebuild_openai_responses_response(
                             request_id, request_chunks, meta
                         )
                     else:
@@ -168,7 +175,7 @@ class StreamMerger:
             chunks: List of response chunk records
 
         Returns:
-            "anthropic" or "openai"
+            "anthropic", "openai" (chat completions) or "openai_responses"
         """
         for chunk in chunks:
             content = chunk.get("content", {})
@@ -188,7 +195,13 @@ class StreamMerger:
             ):
                 return "anthropic"
 
-            # OpenAI format indicators
+            # OpenAI Responses API format indicators
+            # (all Responses API stream events use a "response.*" type prefix,
+            # e.g. response.created, response.output_text.delta)
+            if isinstance(content_type, str) and content_type.startswith("response."):
+                return "openai_responses"
+
+            # OpenAI chat completions format indicators
             if "choices" in content:
                 return "openai"
 
@@ -334,7 +347,7 @@ class StreamMerger:
             block
             for _, block in sorted(
                 content_blocks.items(),
-                key=lambda x: ((0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0]))),
+                key=lambda x: (0, int(x[0])) if str(x[0]).isdigit() else (1, str(x[0])),
             )
         ]
 
@@ -506,6 +519,234 @@ class StreamMerger:
 
         return response
 
+    def _rebuild_openai_responses_response(
+        self,
+        request_id: str,
+        chunks: list[dict[str, Any]],
+        meta: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Rebuild a complete OpenAI Responses API response from streaming events.
+
+        The Responses API emits typed SSE events such as:
+        - response.created / response.in_progress / response.completed:
+          carry the top-level ``response`` object (id, status, usage, ...)
+        - response.output_item.added / response.output_item.done:
+          carry an output item (message, function_call, reasoning, ...)
+        - response.output_text.delta / response.function_call_arguments.delta:
+          carry incremental fragments for output items
+
+        Output items from ``response.output_item.done`` are authoritative and
+        replace accumulated state; delta fragments are kept so truncated
+        streams can still be reconstructed.
+
+        Args:
+            request_id: The request ID
+            chunks: List of response chunk records (sorted by chunk_index)
+            meta: Response meta record
+
+        Returns:
+            Complete response record with rebuilt Responses API body
+        """
+        # Initialize response body structure
+        body: dict[str, Any] = {
+            "object": "response",
+            "output": [],
+            "usage": {},
+        }
+
+        # Track output items by output_index
+        items: dict[int, dict[str, Any]] = {}
+        # Accumulated output_text fragments: (output_index, content_index) -> parts
+        text_parts: dict[tuple[int, int], list[str]] = defaultdict(list)
+        # Accumulated refusal fragments: (output_index, content_index) -> parts
+        refusal_parts: dict[tuple[int, int], list[str]] = defaultdict(list)
+        # Accumulated function call argument fragments: output_index -> parts
+        tool_args_parts: dict[int, list[str]] = defaultdict(list)
+
+        # Top-level fields worth preserving from lifecycle events
+        lifecycle_keys = (
+            "id",
+            "object",
+            "created_at",
+            "status",
+            "model",
+            "error",
+            "incomplete_details",
+            "instructions",
+            "previous_response_id",
+        )
+
+        # Track status code and timestamp
+        status_code = meta.get("status_code", 200)
+        timestamp = None
+        headers: dict[str, str] = {}
+
+        for chunk in chunks:
+            content = chunk.get("content", {})
+            if not isinstance(content, dict):
+                continue
+
+            # Get metadata from first chunk
+            if timestamp is None:
+                timestamp = chunk.get("timestamp")
+                status_code = chunk.get("status_code", status_code)
+                headers = chunk.get("headers", {})
+
+            event_type = content.get("type", "")
+
+            if event_type == "response.created":
+                response_obj = content.get("response", {})
+                if isinstance(response_obj, dict):
+                    for key in lifecycle_keys:
+                        if key in response_obj and key not in body:
+                            body[key] = response_obj[key]
+
+            elif event_type in (
+                "response.in_progress",
+                "response.queued",
+                "response.completed",
+                "response.failed",
+                "response.incomplete",
+            ):
+                # Terminal/lifecycle events carry authoritative top-level state
+                response_obj = content.get("response", {})
+                if isinstance(response_obj, dict):
+                    for key in lifecycle_keys:
+                        if key in response_obj:
+                            body[key] = response_obj[key]
+                    if response_obj.get("usage"):
+                        body["usage"] = response_obj["usage"]
+
+            elif event_type == "response.output_item.added":
+                output_index = content.get("output_index", 0)
+                item = content.get("item", {})
+                if isinstance(item, dict):
+                    items[output_index] = copy.deepcopy(item)
+
+            elif event_type == "response.output_item.done":
+                # Complete item replaces any accumulated state
+                output_index = content.get("output_index", 0)
+                item = content.get("item", {})
+                if isinstance(item, dict):
+                    items[output_index] = copy.deepcopy(item)
+
+            elif event_type == "response.content_part.added":
+                output_index = content.get("output_index", 0)
+                content_index = content.get("content_index", 0)
+                part = content.get("part", {})
+                if not isinstance(part, dict):
+                    continue
+                item = items.setdefault(
+                    output_index,
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [],
+                    },
+                )
+                content_list = item.setdefault("content", [])
+                while len(content_list) <= content_index:
+                    content_list.append({"type": "output_text", "text": "", "annotations": []})
+                # The event payload is authoritative for this content index
+                content_list[content_index] = copy.deepcopy(part)
+
+            elif event_type == "response.output_text.delta":
+                output_index = content.get("output_index", 0)
+                content_index = content.get("content_index", 0)
+                delta = content.get("delta", "")
+                if isinstance(delta, str) and delta:
+                    text_parts[(output_index, content_index)].append(delta)
+
+            elif event_type == "response.function_call_arguments.delta":
+                output_index = content.get("output_index", 0)
+                delta = content.get("delta", "")
+                if isinstance(delta, str) and delta:
+                    tool_args_parts[output_index].append(delta)
+
+            elif event_type == "response.refusal.delta":
+                output_index = content.get("output_index", 0)
+                content_index = content.get("content_index", 0)
+                delta = content.get("delta", "")
+                if isinstance(delta, str) and delta:
+                    refusal_parts[(output_index, content_index)].append(delta)
+
+            elif event_type == "response.refusal.done":
+                # Complete refusal replaces accumulated fragments
+                refusal = content.get("refusal", "")
+                if isinstance(refusal, str):
+                    key = (content.get("output_index", 0), content.get("content_index", 0))
+                    refusal_parts[key] = [refusal]
+
+            elif event_type == "response.function_call_arguments.done":
+                # Complete arguments replace accumulated fragments
+                output_index = content.get("output_index", 0)
+                arguments = content.get("arguments", "")
+                if isinstance(arguments, str):
+                    tool_args_parts[output_index] = [arguments]
+
+        # Merge accumulated text fragments into message items
+        for (output_index, content_index), parts in text_parts.items():
+            item = items.setdefault(
+                output_index,
+                {"type": "message", "role": "assistant", "status": "in_progress", "content": []},
+            )
+            content_list = item.setdefault("content", [])
+            while len(content_list) <= content_index:
+                content_list.append({"type": "output_text", "text": "", "annotations": []})
+            part = content_list[content_index]
+            if isinstance(part, dict) and not part.get("text"):
+                part["text"] = "".join(parts)
+
+        # Merge accumulated refusal fragments into message items
+        for (output_index, content_index), parts in refusal_parts.items():
+            item = items.setdefault(
+                output_index,
+                {"type": "message", "role": "assistant", "status": "in_progress", "content": []},
+            )
+            content_list = item.setdefault("content", [])
+            while len(content_list) <= content_index:
+                content_list.append({"type": "refusal", "refusal": "", "annotations": []})
+            part = content_list[content_index]
+            if isinstance(part, dict) and not part.get("refusal"):
+                part["refusal"] = "".join(parts)
+
+        # Merge accumulated function call arguments into items
+        for output_index, parts in tool_args_parts.items():
+            item = items.setdefault(
+                output_index,
+                {
+                    "type": "function_call",
+                    "id": "",
+                    "call_id": "",
+                    "name": "",
+                    "arguments": "",
+                    "status": "in_progress",
+                },
+            )
+            if not item.get("arguments"):
+                item["arguments"] = "".join(parts)
+
+        # Build output array in order
+        body["output"] = [items[index] for index in sorted(items.keys())]
+
+        # Build response record
+        response: dict[str, Any] = {
+            "type": "response",
+            "request_id": request_id,
+            "status_code": status_code,
+            "body": body,
+            "latency_ms": meta.get("total_latency_ms", 0),
+        }
+
+        if timestamp:
+            response["timestamp"] = timestamp
+        if headers:
+            response["headers"] = headers
+
+        return response
+
     def _extract_text_from_chunks(self, chunks: list[dict[str, Any]]) -> str:
         """Extract the complete response text from streaming chunks."""
         text_parts: list[str] = []
@@ -513,7 +754,18 @@ class StreamMerger:
         for chunk in chunks:
             content = chunk.get("content", {})
             if isinstance(content, dict):
-                # Handle different API formats
+                content_type = content.get("type", "")
+
+                # OpenAI Responses API stream events
+                if isinstance(content_type, str) and content_type.startswith("response."):
+                    if content_type in (
+                        "response.output_text.delta",
+                        "response.refusal.delta",
+                    ):
+                        delta_text = content.get("delta", "")
+                        if isinstance(delta_text, str) and delta_text:
+                            text_parts.append(delta_text)
+                    continue
 
                 # Anthropic format
                 if "delta" in content:
@@ -552,6 +804,12 @@ class StreamMerger:
         3. content_block_stop: marks the end of the tool call
 
         We need to aggregate all input_json_delta fragments by content block index.
+
+        Tool calls in the OpenAI Responses API streaming format arrive as:
+        1. response.output_item.added with item.type=function_call (call_id, name)
+        2. response.function_call_arguments.delta: partial JSON fragments
+        3. response.output_item.done / response.function_call_arguments.done:
+           the complete item/arguments
         """
         # Track tool calls by their content block index
         tool_call_data: dict[int, dict[str, Any]] = {}
@@ -563,6 +821,34 @@ class StreamMerger:
                 continue
 
             content_type = content.get("type", "")
+
+            # OpenAI Responses API format
+            if isinstance(content_type, str) and content_type.startswith("response."):
+                if content_type in ("response.output_item.added", "response.output_item.done"):
+                    item = content.get("item", {})
+                    if isinstance(item, dict) and item.get("type") == "function_call":
+                        output_index = content.get("output_index", 0)
+                        tool_call_data[output_index] = {
+                            "id": item.get("call_id") or item.get("id", ""),
+                            "name": item.get("name", ""),
+                        }
+                        if content_type == "response.output_item.done":
+                            arguments = item.get("arguments", "")
+                            if arguments:
+                                tool_input_parts[output_index] = [arguments]
+                elif content_type == "response.function_call_arguments.delta":
+                    output_index = content.get("output_index", 0)
+                    partial_json = content.get("delta", "")
+                    if partial_json:
+                        tool_input_parts[output_index].append(partial_json)
+                elif content_type == "response.function_call_arguments.done":
+                    # Complete arguments replace accumulated fragments
+                    output_index = content.get("output_index", 0)
+                    arguments = content.get("arguments", "")
+                    if arguments:
+                        tool_input_parts[output_index] = [arguments]
+                continue
+
             index = content.get("index")
 
             # Start of a tool_use content block
@@ -624,13 +910,29 @@ class StreamMerger:
             elif isinstance(content, str):
                 return content
 
-        # OpenAI format
+        # OpenAI chat completions format
         if "choices" in body:
             texts = []
             for choice in body.get("choices", []):
                 message = choice.get("message", {})
                 if "content" in message:
                     texts.append(message["content"])
+            return "".join(texts)
+
+        # OpenAI Responses API format
+        if isinstance(body.get("output"), list):
+            texts = []
+            for item in body["output"]:
+                if not isinstance(item, dict) or item.get("type") != "message":
+                    continue
+                for part in item.get("content", []) or []:
+                    if not isinstance(part, dict):
+                        continue
+                    if isinstance(part.get("text"), str):
+                        texts.append(part["text"])
+                    elif isinstance(part.get("refusal"), str):
+                        # Refusal parts carry the text in `refusal`
+                        texts.append(part["refusal"])
             return "".join(texts)
 
         # Fallback: JSON dump
@@ -658,7 +960,7 @@ class StreamMerger:
                             )
                         )
 
-        # OpenAI format
+        # OpenAI chat completions format
         if "choices" in body:
             for choice in body.get("choices", []):
                 message = choice.get("message", {})
@@ -671,6 +973,18 @@ class StreamMerger:
                                 input=tc.get("function", {}).get("arguments"),
                             )
                         )
+
+        # OpenAI Responses API format
+        if isinstance(body.get("output"), list):
+            for item in body["output"]:
+                if isinstance(item, dict) and item.get("type") == "function_call":
+                    tool_calls.append(
+                        ToolCall(
+                            id=item.get("call_id") or item.get("id", ""),
+                            name=item.get("name", ""),
+                            input=item.get("arguments"),
+                        )
+                    )
 
         return tool_calls
 

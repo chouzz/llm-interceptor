@@ -52,8 +52,33 @@ const isOpenAIFormat = (body: unknown): boolean => {
   return false;
 };
 
+const RESPONSES_URL_RE = /\/responses(?:\/|\?|#|$)/;
+
 /**
- * Normalize provider-specific token usage stats into {input_tokens, output_tokens}.
+ * Detects if the request body follows the OpenAI Responses API structure
+ * (prompt carried in `input` instead of `messages`).
+ *
+ * When the request URL is available it takes priority: embeddings requests
+ * also carry a top-level `input` without `messages` and must not be treated
+ * as Responses chat payloads. Without a URL, fall back to body heuristics
+ * that require Responses-specific fields beyond a bare `input`.
+ */
+const isOpenAIResponsesFormat = (body: unknown, url?: string): boolean => {
+  if (typeof url === 'string' && url) {
+    return RESPONSES_URL_RE.test(url);
+  }
+  if (!isRecord(body)) return false;
+  if (!('input' in body) || 'messages' in body) return false;
+  if (typeof body.input !== 'string' && !Array.isArray(body.input)) return false;
+  return (
+    typeof body.instructions === 'string' ||
+    'previous_response_id' in body ||
+    'max_output_tokens' in body
+  );
+};
+
+/**
+ * Normalizes provider-specific token usage stats into {input_tokens, output_tokens}.
  */
 const normalizeUsageMetrics = (rawUsage: unknown) => {
   if (!isRecord(rawUsage)) return undefined;
@@ -216,10 +241,138 @@ const normalizeOpenAIRequest = (
 };
 
 /**
+ * Converts a Responses API function_call item into a normalized tool_use block.
+ */
+const normalizeResponsesFunctionCall = (item: Record<string, unknown>): Record<string, unknown> => {
+  const argsRaw = asString(item.arguments, '');
+  let input: unknown = {};
+  if (argsRaw) {
+    try {
+      input = JSON.parse(argsRaw);
+    } catch {
+      input = { error: 'Failed to parse arguments', raw: argsRaw };
+    }
+  }
+  return {
+    type: 'tool_use',
+    name: asString(item.name, 'unknown'),
+    input,
+    id: item.call_id !== undefined ? item.call_id : item.id,
+  };
+};
+
+/**
+ * Converts Responses API message content parts into UI content blocks.
+ */
+const normalizeResponsesContentParts = (content: unknown): unknown => {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return content;
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return { type: 'text', text: part };
+      if (!isRecord(part)) return null;
+      if (
+        (part.type === 'input_text' || part.type === 'output_text' || part.type === 'summary_text') &&
+        typeof part.text === 'string'
+      ) {
+        return { type: 'text', text: part.text };
+      }
+      if (typeof part.text === 'string') {
+        return { type: 'text', text: part.text };
+      }
+      return part;
+    })
+    .filter((part) => part !== null);
+};
+
+/**
+ * Normalizes an OpenAI Responses API request body into our standard format.
+ */
+const normalizeOpenAIResponsesRequest = (
+  body: unknown
+): { system: string | undefined; messages: NormalizedMessage[]; tools: NormalizedTool[]; model: string } => {
+  const model = isRecord(body) ? asString(body.model, 'unknown-model') : 'unknown-model';
+
+  // The Responses API carries the system prompt in `instructions`
+  const instructions = isRecord(body) ? body.instructions : undefined;
+  const system =
+    typeof instructions === 'string' && instructions.trim() ? instructions : undefined;
+
+  // Responses API tools are flat: { type: 'function', name, parameters, description }
+  const toolsSrc = isRecord(body) && Array.isArray(body.tools) ? body.tools : [];
+  const tools: NormalizedTool[] = toolsSrc
+    .map((t) => {
+      if (!isRecord(t)) return null;
+      if (t.type === 'function' && typeof t.name === 'string') {
+        const tool: NormalizedTool = {
+          name: t.name,
+          input_schema: t.parameters,
+        };
+        if (typeof t.description === 'string') {
+          tool.description = t.description;
+        }
+        return tool;
+      }
+      return null;
+    })
+    .filter((t): t is NormalizedTool => t !== null);
+
+  // Input is a string shorthand or a list of typed items
+  const input = isRecord(body) ? body.input : undefined;
+  let messages: NormalizedMessage[] = [];
+  if (typeof input === 'string') {
+    messages = [{ role: 'user', content: input }];
+  } else if (Array.isArray(input)) {
+    messages = input
+      .filter((item): item is Record<string, unknown> => isRecord(item))
+      .filter((item) => item.type !== 'reasoning')
+      .map((item) => {
+        const itemType = asString(item.type, '');
+
+        // Prior assistant tool call
+        if (itemType === 'function_call') {
+          return {
+            role: 'assistant' as const,
+            content: [normalizeResponsesFunctionCall(item)],
+          };
+        }
+
+        // Tool result
+        if (itemType === 'function_call_output') {
+          let output: unknown = item.output;
+          if (typeof output === 'string') {
+            try {
+              output = JSON.parse(output);
+            } catch {
+              // keep raw string
+            }
+          }
+          return {
+            role: 'user' as const,
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: item.call_id,
+                content: output,
+              },
+            ],
+          };
+        }
+
+        return {
+          role: asString(item.role, 'user') as NormalizedMessage['role'],
+          content: normalizeResponsesContentParts(item.content),
+        };
+      });
+  }
+
+  return { system, messages, tools, model };
+};
+
+/**
  * Normalizes an Anthropic-style request body into our standard format.
  */
-const normalizeAnthropicRequest = (
-  body: unknown
+const normalizeAnthropicRequest = (  body: unknown
 ): { system: unknown; messages: NormalizedMessage[]; tools: NormalizedTool[]; model: string } => {
   if (!isRecord(body)) return { system: undefined, messages: [], tools: [], model: 'unknown' };
 
@@ -292,12 +445,49 @@ const normalizeExchangePair = (
     isRecord(rawResponse?.body) && 'usage' in rawResponse.body ? rawResponse.body.usage : undefined;
 
   try {
-    const openAIFormat = isOpenAIFormat(rawRequest.body);
-    const normalized = openAIFormat
-      ? normalizeOpenAIRequest(rawRequest.body)
-      : normalizeAnthropicRequest(rawRequest.body);
+    const responsesFormat = isOpenAIResponsesFormat(rawRequest.body, rawRequest.url);
+    const openAIFormat = !responsesFormat && isOpenAIFormat(rawRequest.body);
+    const normalized = responsesFormat
+      ? normalizeOpenAIResponsesRequest(rawRequest.body)
+      : openAIFormat
+        ? normalizeOpenAIRequest(rawRequest.body)
+        : normalizeAnthropicRequest(rawRequest.body);
 
-    if (openAIFormat) {
+    if (responsesFormat) {
+      // Responses API: extract blocks from the output items array
+      if (isRecord(rawResponse?.body) && Array.isArray(rawResponse.body.output)) {
+        const blocks: Record<string, unknown>[] = [];
+        rawResponse.body.output.forEach((item) => {
+          if (!isRecord(item)) return;
+          if (item.type === 'message') {
+            const content = Array.isArray(item.content) ? item.content : [];
+            content.forEach((part) => {
+              if (!isRecord(part)) return;
+              // Refusal parts carry the text in `refusal` instead of `text`
+              if (part.type === 'refusal' && typeof part.refusal === 'string' && part.refusal) {
+                blocks.push({ type: 'text', text: part.refusal });
+                return;
+              }
+              if (typeof part.text === 'string' && part.text) {
+                blocks.push({ type: 'text', text: part.text });
+              }
+            });
+          } else if (item.type === 'function_call') {
+            blocks.push(normalizeResponsesFunctionCall(item));
+          } else if (item.type === 'reasoning') {
+            const summary = Array.isArray(item.summary) ? item.summary : [];
+            const text = summary
+              .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
+              .join('\n')
+              .trim();
+            blocks.push({ type: 'thinking', thinking: text });
+          }
+        });
+        if (blocks.length > 0) {
+          responseContent = blocks;
+        }
+      }
+    } else if (openAIFormat) {
       if (isRecord(rawResponse?.body) && Array.isArray(rawResponse.body.choices)) {
         const choice = rawResponse.body.choices[0];
         if (isRecord(choice) && isRecord(choice.message)) {
