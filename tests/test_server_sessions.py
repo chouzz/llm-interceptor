@@ -208,3 +208,106 @@ def test_api_sessions_detect_renamed_legacy_session_without_metadata(tmp_path: P
         assert payload[0]["total_latency_ms"] == 321
     finally:
         watch_manager.shutdown()
+
+
+def test_api_sessions_support_openai_responses_payloads(tmp_path: Path) -> None:
+    """Responses API exchanges expose model, prompt key, tools, and usage in the overview."""
+    watch_manager = WatchManager(output_dir=tmp_path)
+    watch_manager.initialize()
+    try:
+        session_dir = tmp_path / "session_20260101_120000"
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        _write_json(
+            session_dir / "001_request_test.json",
+            {
+                "type": "request",
+                "request_id": "req-1",
+                "timestamp": "2026-01-01T12:00:00Z",
+                "method": "POST",
+                "url": "https://api.openai.com/v1/responses",
+                "body": {
+                    "model": "gpt-5-mini",
+                    "instructions": "You are a helpful assistant.",
+                    "input": "What is the weather in SF?",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "name": "get_weather",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {"city": {"type": "string"}},
+                            },
+                        }
+                    ],
+                    "stream": True,
+                },
+            },
+        )
+        _write_json(
+            session_dir / "001_response_test.json",
+            {
+                "type": "response",
+                "request_id": "req-1",
+                "timestamp": "2026-01-01T12:00:02Z",
+                "status_code": 200,
+                "latency_ms": 750,
+                "body": {
+                    "id": "resp_1",
+                    "object": "response",
+                    "status": "completed",
+                    "model": "gpt-5-mini",
+                    "output": [
+                        {
+                            "type": "message",
+                            "id": "msg_1",
+                            "role": "assistant",
+                            "status": "completed",
+                            "content": [
+                                {"type": "output_text", "text": "Let me check.", "annotations": []}
+                            ],
+                        },
+                        {
+                            "type": "function_call",
+                            "id": "fc_1",
+                            "call_id": "call_1",
+                            "name": "get_weather",
+                            "arguments": '{"city": "SF"}',
+                            "status": "completed",
+                        },
+                    ],
+                    "usage": {
+                        "input_tokens": 20,
+                        "output_tokens": 10,
+                        "total_tokens": 30,
+                    },
+                },
+            },
+        )
+
+        app = create_app(watch_manager)
+        client = TestClient(app)
+
+        res = client.get("/api/sessions/session_20260101_120000")
+        assert res.status_code == 200
+
+        payload = res.json()
+        assert len(payload["exchanges"]) == 1
+
+        exchange = payload["exchanges"][0]
+        assert exchange["model"] == "gpt-5-mini"
+        assert exchange["status_code"] == 200
+        assert exchange["latency_ms"] == 750
+        assert exchange["has_response"] is True
+        # System prompt key is hashed from the instructions field
+        assert exchange["system_prompt_key"]
+        # Tool names are collected from both request tools and response function calls
+        assert exchange["tool_names"] == ["get_weather"]
+        # Usage is normalized from the Responses API usage payload
+        assert exchange["usage"] == {
+            "input_tokens": 20,
+            "output_tokens": 10,
+            "total_tokens": 30,
+        }
+    finally:
+        watch_manager.shutdown()

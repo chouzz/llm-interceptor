@@ -5,7 +5,7 @@ from mitmproxy.options import Options
 
 from lli import __version__
 from lli.config import FilterConfig, LLIConfig, ProxyConfig, load_config
-from lli.filters import URLFilter
+from lli.filters import URLFilter, get_provider_patterns
 from lli.models import RecordType, RequestRecord
 from lli.storage import JSONLWriter
 
@@ -139,6 +139,17 @@ class TestURLFilter:
         config = FilterConfig()
         url_filter = URLFilter(config)
         assert url_filter.should_capture("https://api.openai.com/v1/chat/completions")
+
+    def test_openai_responses_url_matches(self) -> None:
+        """Test that OpenAI Responses API URLs are matched."""
+        config = FilterConfig()
+        url_filter = URLFilter(config)
+        assert url_filter.should_capture("https://api.openai.com/v1/responses")
+
+    def test_openai_responses_provider_pattern_registered(self) -> None:
+        """Test that the Responses endpoint is a known OpenAI provider pattern."""
+        patterns = get_provider_patterns(["openai"])
+        assert any("responses" in p for p in patterns)
 
     def test_random_url_not_matched(self) -> None:
         """Test that random URLs are not matched."""

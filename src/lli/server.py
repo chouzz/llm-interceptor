@@ -227,6 +227,19 @@ def _is_openai_format(body: object) -> bool:
     return False
 
 
+def _is_openai_responses_request(body: object) -> bool:
+    """Best-effort detection for OpenAI Responses API request payloads.
+
+    Responses API requests carry the prompt in ``input`` (a string or a list
+    of items) instead of ``messages``.
+    """
+    if not isinstance(body, dict):
+        return False
+    if "messages" in body or "input" not in body:
+        return False
+    return isinstance(body.get("input"), list | str)
+
+
 def _stringify_content(value: object) -> str:
     """Convert provider-specific content blocks to a readable string."""
     if isinstance(value, str):
@@ -257,6 +270,10 @@ def _extract_system_prompt_key(body: object) -> str:
     if not isinstance(body, dict):
         return ""
 
+    if _is_openai_responses_request(body):
+        raw_key = _stringify_content(body.get("instructions")).strip()
+        return hashlib.sha1(raw_key.encode("utf-8")).hexdigest() if raw_key else ""
+
     if _is_openai_format(body):
         messages = body.get("messages")
         if not isinstance(messages, list):
@@ -284,6 +301,24 @@ def _extract_request_tool_names(body: object) -> list[str]:
         return []
 
     names: list[str] = []
+    if _is_openai_responses_request(body):
+        tools = body.get("tools")
+        if isinstance(tools, list):
+            for tool in tools:
+                if not isinstance(tool, dict):
+                    continue
+                name = tool.get("name")
+                if isinstance(name, str) and name.strip():
+                    names.append(name)
+        items = body.get("input")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict) and item.get("type") == "function_call":
+                    name = item.get("name")
+                    if isinstance(name, str) and name.strip():
+                        names.append(name)
+        return names
+
     if _is_openai_format(body):
         messages = body.get("messages")
         if not isinstance(messages, list):
@@ -349,6 +384,17 @@ def _extract_response_tool_names(body: object) -> list[str]:
                 name = function.get("name")
                 if isinstance(name, str) and name.strip():
                     names.append(name)
+        if names:
+            return names
+
+    output = body.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict) or item.get("type") != "function_call":
+                continue
+            name = item.get("name")
+            if isinstance(name, str) and name.strip():
+                names.append(name)
         if names:
             return names
 
