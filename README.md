@@ -15,6 +15,7 @@
 ## ✨ Features
 
 - **Watch Mode** - Interactive continuous capture with session management
+- **One-Shot Capture (`lli run`)** - Wrap any command (`claude -p`, `codex exec`, ...) with fully automated, non-interactive capture — ideal for scripted agent experiments
 - **Transparent Inspection** - See exactly what prompts are sent and what responses are received
 - **Streaming Support** - Captures both streaming (SSE) and non-streaming API responses
 - **Multi-Provider** - Works with Anthropic, OpenAI (Chat Completions and Responses API), Google, Groq, Together, Mistral, and more
@@ -65,6 +66,10 @@ lli-dev-setup
 ```
 
 ## 🚀 Quick Start
+
+> **Scripting or agent experiments?** You can skip this interactive workflow
+> entirely — see [Automated Capture: `lli run`](#-automated-capture-lli-run)
+> to capture `claude -p "..."`-style commands with zero interaction.
 
 ### 1. Install Certificate (For HTTPS Capture Only)
 
@@ -153,6 +158,62 @@ In the UI, you can:
 - Copy formatted content for further analysis
 
 
+
+## 🤖 Automated Capture: `lli run`
+
+For scripting and agent experiments you can skip watch mode entirely. `lli run`
+wraps a single command with a private ephemeral proxy and captures its LLM
+traffic end-to-end — **no keypresses, no env setup, no manual merge**:
+
+```bash
+lli run -- claude -p "fix the failing test"
+
+lli run --label codex -- codex exec "review src/"
+```
+
+How it works:
+
+1. Starts a throwaway proxy on a random loopback port (nothing else on your
+   machine is affected)
+2. Spawns the command with `HTTP(S)_PROXY` and CA trust (`NODE_EXTRA_CA_CERTS`,
+   `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`) already injected — Claude Code,
+   Codex, and curl work out of the box
+3. When the command exits, waits for in-flight streaming responses to drain,
+   then automatically processes the session (merge + split into per-exchange
+   request/response JSON) and writes `run_meta.json`
+4. Exits with the command's own exit code, so it composes with scripts and CI
+
+Each run is isolated in its own directory (default `traces/runs/`):
+
+```
+traces/runs/run_20260101_120000_codex/
+├── run_meta.json              # command, exit code, duration, requests captured, ...
+├── all_captured_*.jsonl       # raw captured records (replayable)
+└── session_20260101_120000/   # processed session
+    ├── session_meta.json
+    ├── 001_request_2026-01-01_12-00-00.json
+    ├── 001_response_2026-01-01_12-00-00.json
+    └── ...
+```
+
+This makes it easy to batch-analyze how different agents (Claude Code, Codex,
+...) solve the same tasks — every exchange, tool call, and token count lands
+in plain JSON files ready for scripting:
+
+```bash
+for task in "fix the login bug" "add dark mode" "write tests for api.py"; do
+  lli run --label "claude-$task" -- claude -p "$task"
+done
+# Then inspect traces/runs/run_*/session_*/00N_{request,response}_*.json
+```
+
+> **Note:** the mitmproxy CA file (`~/.mitmproxy/mitmproxy-ca-cert.pem`) must
+> exist — it is generated the first time any LLI proxy starts. System-wide
+> certificate installation (Quick Start step 1) is **not** required for
+> `lli run`, since CA trust is injected into the child process directly.
+
+See [`lli run` CLI reference](#lli-run) for all options (`--label`,
+`--output-dir`, `--include`, `--exclude`, `--drain-timeout`).
 
 ## 🎬 How Watch Mode Works
 
