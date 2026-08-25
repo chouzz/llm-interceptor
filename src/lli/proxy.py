@@ -317,7 +317,7 @@ class WatchAddon:
     # Pre-compiled regex patterns for API key masking
     _MASK_PATTERNS = [
         (re.compile(r"(sk-[a-zA-Z0-9]{4})[a-zA-Z0-9]+"), r"\1***"),
-        (re.compile(r"(Bearer\s+)[a-zA-Z0-9_-]+"), r"\1***MASKED***"),
+        (re.compile(r"(Bearer\s+).*", re.IGNORECASE), r"\1***MASKED***"),
         (re.compile(r"([a-zA-Z0-9]{8})[a-zA-Z0-9]{24,}"), r"\1***"),
     ]
 
