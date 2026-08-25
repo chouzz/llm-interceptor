@@ -1,5 +1,7 @@
 """Basic tests for LLM Interceptor."""
 
+from unittest.mock import MagicMock
+
 import pytest
 from mitmproxy.options import Options
 
@@ -7,6 +9,7 @@ from lli import __version__
 from lli.config import FilterConfig, LLIConfig, ProxyConfig, load_config
 from lli.filters import URLFilter, get_provider_patterns
 from lli.models import RecordType, RequestRecord
+from lli.proxy import WatchAddon
 from lli.storage import JSONLWriter
 
 
@@ -251,6 +254,51 @@ class TestURLFilterGlob:
         assert url_filter.should_capture("https://api.openai.com/v1/chat")
         # Neither should match
         assert not url_filter.should_capture("https://example.com/api")
+
+
+class TestMasking:
+    """Test sensitive data masking."""
+
+    @pytest.fixture
+    def addon(self) -> WatchAddon:
+        return WatchAddon(LLIConfig(), MagicMock(), URLFilter(FilterConfig()))
+
+    def test_bearer_dotted_key_fully_masked(self, addon: WatchAddon) -> None:
+        """Test that keys containing dots (e.g. bigmodel id.secret) are fully masked."""
+        key = "d0f4e5b6a7c8d9e0.EWWCfjloPL1XvBwz"
+        masked = addon._mask_api_key(f"Bearer {key}")
+        assert masked == "Bearer ***MASKED***"
+        assert "EWWCfjloPL1XvBwz" not in masked
+
+    def test_bearer_key_with_special_chars_masked(self, addon: WatchAddon) -> None:
+        """Test that Bearer tokens with base64/colon chars are fully masked."""
+        key = "Zm9vOmJhcg==:abcDEF123456789012345678901234567890"
+        masked = addon._mask_api_key(f"Bearer {key}")
+        assert masked == "Bearer ***MASKED***"
+        assert key not in masked
+
+    def test_bearer_lowercase_scheme_masked(self, addon: WatchAddon) -> None:
+        """Test that a lowercase 'bearer' scheme is also masked."""
+        masked = addon._mask_api_key("bearer d0f4e5b6.EWWCfjloPL1XvBwz")
+        assert masked == "bearer ***MASKED***"
+
+    def test_bearer_regular_key_masked(self, addon: WatchAddon) -> None:
+        """Test that regular Bearer keys are still masked."""
+        masked = addon._mask_api_key("Bearer sk-ant-api03-abcdef1234567890ABCDEF")
+        assert masked == "Bearer ***MASKED***"
+
+    def test_mask_headers_masks_authorization(self, addon: WatchAddon) -> None:
+        """Test that sensitive headers are masked and others are untouched."""
+        headers = {
+            "Authorization": "Bearer d0f4e5b6.EWWCfjloPL1XvBwz",
+            "X-Api-Key": "abcdef1234567890abcdef1234567890abcdef1234567890",
+            "Content-Type": "application/json",
+        }
+        masked = addon._mask_headers(headers)
+        assert masked["Authorization"] == "Bearer ***MASKED***"
+        assert "EWWCfjloPL1XvBwz" not in masked["Authorization"]
+        assert "abcdef1234567890" not in masked["X-Api-Key"]
+        assert masked["Content-Type"] == "application/json"
 
 
 class TestModels:
