@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from lli.server import _is_openai_responses_request, create_app
+from lli.server import StaticTracesProvider, _is_openai_responses_request, create_app
 from lli.watch import WatchManager
 
 
@@ -349,3 +349,57 @@ def test_api_sessions_support_openai_responses_payloads(tmp_path: Path) -> None:
         }
     finally:
         watch_manager.shutdown()
+
+
+def test_static_traces_provider_serves_sessions(tmp_path: Path) -> None:
+    """The standalone provider (lli serve) lists sessions without a WatchManager."""
+    session_dir = tmp_path / "session_20260101_120000_123456"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        session_dir / "001_request_test.json",
+        {
+            "type": "request",
+            "request_id": "req-1",
+            "timestamp": "2026-01-01T12:00:00Z",
+            "method": "POST",
+            "url": "https://api.anthropic.com/v1/messages",
+            "body": {"model": "claude-sonnet-4-5", "messages": []},
+        },
+    )
+    _write_json(
+        session_dir / "001_response_test.json",
+        {
+            "type": "response",
+            "request_id": "req-1",
+            "timestamp": "2026-01-01T12:00:01Z",
+            "status_code": 200,
+            "latency_ms": 100,
+            "body": {"content": [{"type": "text", "text": "hi"}]},
+        },
+    )
+    # run_meta.json must be ignored by the session file parser
+    _write_json(
+        session_dir / "run_meta.json",
+        {"command": ["claude", "-p", "hello"], "exit_code": 0},
+    )
+
+    provider = StaticTracesProvider(output_dir=tmp_path)
+    app = create_app(provider)
+    client = TestClient(app)
+
+    res = client.get("/api/sessions")
+    assert res.status_code == 200
+    payload = res.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == "session_20260101_120000_123456"
+    assert payload[0]["request_count"] == 1
+
+    # Status: sessions exist, but no active recording (no capture process)
+    status = client.get("/api/status").json()
+    assert status["has_sessions"] is True
+    assert status["active"] is False
+
+    # Exchange details still resolve
+    detail = client.get("/api/sessions/session_20260101_120000_123456/exchanges/001")
+    assert detail.status_code == 200
+    assert detail.json()["pair"]["request"]["body"]["model"] == "claude-sonnet-4-5"

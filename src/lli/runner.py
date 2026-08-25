@@ -9,11 +9,14 @@ no interactive keypresses. Designed for automated agent experiments:
 
 Lifecycle:
     1. Start an ephemeral mitmproxy instance (OS-assigned port)
-    2. Start a recording session
+    2. Start a recording session in the shared traces directory
     3. Spawn the command with proxy + CA environment variables injected
     4. Wait for the command to exit, then drain in-flight responses
-    5. Stop the session (triggers merge + split), write run metadata,
-       and shut everything down cleanly
+    5. Stop the session (triggers merge + split), write run metadata
+       (run_meta.json inside the session directory), and shut down cleanly
+
+Sessions land directly in the traces root alongside `lli watch` sessions;
+microsecond session IDs keep concurrent runs collision-free.
 """
 
 from __future__ import annotations
@@ -21,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -44,9 +46,8 @@ class RunResult:
 
     command: list[str]
     label: str | None
-    run_dir: Path
     session_id: str
-    session_dir: Path | None
+    session_dir: Path
     exit_code: int
     started_at: datetime
     ended_at: datetime
@@ -60,32 +61,10 @@ class RunResult:
         """Wall-clock duration of the wrapped command run."""
         return (self.ended_at - self.started_at).total_seconds()
 
-
-def _slugify(label: str) -> str:
-    """Convert a label into a filesystem-safe directory name fragment."""
-    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", label.strip()).strip("-._")
-    return slug[:40]
-
-
-def make_run_dir(root: Path, label: str | None = None, now: datetime | None = None) -> Path:
-    """
-    Create a unique run directory under ``root``.
-
-    Names look like ``run_20260101_120000`` or ``run_20260101_120000_codex``
-    when a label is given. A numeric suffix is appended on collisions.
-    """
-    timestamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
-    slug = _slugify(label) if label else ""
-    base = f"run_{timestamp}" + (f"_{slug}" if slug else "")
-
-    run_dir = root / base
-    suffix = 2
-    while run_dir.exists():
-        run_dir = root / f"{base}_{suffix}"
-        suffix += 1
-
-    run_dir.mkdir(parents=True, exist_ok=False)
-    return run_dir
+    @property
+    def metadata_path(self) -> Path:
+        """Path to the run metadata file inside the session directory."""
+        return self.session_dir / RUN_METADATA_FILE
 
 
 def build_child_env(
@@ -178,7 +157,7 @@ async def _terminate_process(proc: asyncio.subprocess.Process) -> int:
 
 
 def write_run_metadata(result: RunResult) -> Path:
-    """Write the run metadata JSON file into the run directory."""
+    """Write the run metadata JSON file into the session directory."""
     payload = {
         "lli_version": __version__,
         "command": result.command,
@@ -189,11 +168,10 @@ def write_run_metadata(result: RunResult) -> Path:
         "exit_code": result.exit_code,
         "interrupted": result.interrupted,
         "session_id": result.session_id,
-        "session_dir": result.session_dir.name if result.session_dir else None,
         "requests_captured": result.requests_captured,
         "proxy_port": result.proxy_port,
     }
-    path = result.run_dir / RUN_METADATA_FILE
+    path = result.metadata_path
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -210,11 +188,15 @@ async def run_wrapped_command(
     """
     Run ``command`` under an ephemeral capture proxy and finalize a session.
 
+    The session is created directly in ``output_root`` (default: the shared
+    traces directory), so it shows up in the web UI alongside watch-mode
+    sessions as soon as it is processed.
+
     Args:
         command: Command and arguments to execute
         config: LLI configuration (proxy host/port are overridden)
-        label: Optional label embedded in the run directory name
-        output_root: Root directory for run outputs (default: <traces>/runs)
+        label: Optional label recorded in run_meta.json
+        output_root: Traces root for session output (default: <traces>)
         drain_timeout: Seconds to wait for in-flight responses after exit
         base_env: Base environment for the child (default: os.environ)
 
@@ -231,18 +213,17 @@ async def run_wrapped_command(
     config.proxy.host = "127.0.0.1"
     config.proxy.port = 0
 
-    root = Path(output_root) if output_root is not None else get_default_trace_dir() / "runs"
-    run_dir = make_run_dir(root, label)
+    root = Path(output_root) if output_root is not None else get_default_trace_dir()
     started_at = datetime.now()
 
     logger.info(
         "lli run: %s → %s (label=%s)",
         " ".join(command),
-        run_dir,
+        root,
         label or "<none>",
     )
 
-    watch_manager = WatchManager(output_dir=run_dir, port=0)
+    watch_manager = WatchManager(output_dir=root, port=0)
     watch_manager.initialize()
 
     session: SessionContext | None = None
@@ -303,17 +284,17 @@ async def run_wrapped_command(
         watch_manager.shutdown()
 
     ended_at = datetime.now()
+    assert session is not None and session_dir is not None
 
     result = RunResult(
         command=list(command),
         label=label,
-        run_dir=run_dir,
-        session_id=session.session_id if session else "",
+        session_id=session.session_id,
         session_dir=session_dir,
         exit_code=exit_code,
         started_at=started_at,
         ended_at=ended_at,
-        requests_captured=session.request_count if session else 0,
+        requests_captured=session.request_count,
         proxy_port=proxy_port,
         drained=drained,
         interrupted=interrupted,
@@ -325,7 +306,7 @@ async def run_wrapped_command(
         result.exit_code,
         result.session_id,
         result.requests_captured,
-        result.run_dir,
+        result.session_dir,
     )
 
     return result

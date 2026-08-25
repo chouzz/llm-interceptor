@@ -148,7 +148,7 @@ Use `lli config --show` to confirm the upstream CA path. If the file does not ex
 
 ### 5. Visualize with Web UI
 
-The web interface should be launched in http://127.0.0.1:8000 to analyze captured conversations:
+The web interface should be launched in http://127.0.0.1:48080 to analyze captured conversations:
 
 In the UI, you can:
 - Browse captured sessions in the sidebar
@@ -156,6 +156,10 @@ In the UI, you can:
 - Inspect detailed API payloads and metadata
 - Search and filter through captured data
 - Copy formatted content for further analysis
+
+> **Tip:** prefer a permanent UI? Run `lli serve` once and keep it running —
+> it shows sessions from both `lli watch` and `lli run` and picks up new ones
+> automatically (see [Automated Capture](#-automated-capture-lli-run)).
 
 
 
@@ -183,17 +187,26 @@ How it works:
    request/response JSON) and writes `run_meta.json`
 4. Exits with the command's own exit code, so it composes with scripts and CI
 
-Each run is isolated in its own directory (default `traces/runs/`):
+Each run's session lands directly in the traces directory alongside
+watch-mode sessions (microsecond IDs keep concurrent runs collision-free),
+so it shows up in the web UI automatically:
 
 ```
-traces/runs/run_20260101_120000_codex/
-├── run_meta.json              # command, exit code, duration, requests captured, ...
-├── all_captured_*.jsonl       # raw captured records (replayable)
-└── session_20260101_120000/   # processed session
+traces/
+├── all_captured_20260101_120000_123456.jsonl   # raw records for this run (replayable)
+└── session_20260101_120000_123456/             # this run's session
     ├── session_meta.json
+    ├── run_meta.json                           # command, label, exit code, duration, ...
     ├── 001_request_2026-01-01_12-00-00.json
     ├── 001_response_2026-01-01_12-00-00.json
     └── ...
+```
+
+`--label` is recorded in `run_meta.json` (not in directory names), so run
+sessions are easy to find programmatically:
+
+```bash
+ls traces/session_*/run_meta.json
 ```
 
 This makes it easy to batch-analyze how different agents (Claude Code, Codex,
@@ -204,7 +217,8 @@ in plain JSON files ready for scripting:
 for task in "fix the login bug" "add dark mode" "write tests for api.py"; do
   lli run --label "claude-$task" -- claude -p "$task"
 done
-# Then inspect traces/runs/run_*/session_*/00N_{request,response}_*.json
+# Then inspect traces/session_*/00N_{request,response}_*.json
+# (run sessions are the ones containing run_meta.json)
 ```
 
 > **Note:** the mitmproxy CA file (`~/.mitmproxy/mitmproxy-ca-cert.pem`) must
@@ -352,17 +366,19 @@ lli run --label codex -- codex exec "review src/"
 lli run --include "*my-llm.example.com*" --output-dir ./experiments -- curl -s https://api.example.com/health
 ```
 
-Each run is isolated in its own directory (default: `<traces>/runs/`):
+Each run's session is created directly in the traces directory alongside
+watch-mode sessions (microsecond IDs keep concurrent runs collision-free),
+and `run_meta.json` inside it records the command, label, exit code, and
+duration:
 
 ```
-traces/runs/run_20260101_120000_codex/
-├── run_meta.json              # command, exit code, duration, session id, ...
-├── all_captured_*.jsonl       # raw captured records (replayable)
-└── session_20260101_120000/   # processed session
-    ├── session_meta.json
-    ├── 001_request_2026-01-01_12-00-00.json
-    ├── 001_response_2026-01-01_12-00-00.json
-    └── ...
+traces/session_20260101_120000_123456/
+├── session_meta.json
+├── run_meta.json              # command, label, exit code, duration, ...
+├── all_captured_*.jsonl       # raw captured records (replayable, at traces root)
+├── 001_request_2026-01-01_12-00-00.json
+├── 001_response_2026-01-01_12-00-00.json
+└── ...
 ```
 
 Notes:
@@ -372,6 +388,21 @@ Notes:
   `REQUESTS_CA_BUNDLE`, so Node- and OpenSSL-based agents work out of the box.
 - After the command exits, LLI waits up to `--drain-timeout` (default 15s)
   for in-flight streaming responses to complete before finalizing.
+
+### `lli serve`
+
+Start the web UI as a standalone, long-running server. Serves all captured
+sessions (from `lli watch` and `lli run`) and picks up new ones
+automatically — keep it running in one terminal and capture from any other:
+
+```bash
+lli serve                          # http://127.0.0.1:48080, default traces dir
+
+lli serve --port 48080 --output-dir ./traces
+```
+
+`lli watch` still embeds its own UI; when its port is already taken by a
+standalone `lli serve` instance, it reuses that server.
 
 ### `lli stats`
 
