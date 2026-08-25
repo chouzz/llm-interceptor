@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -10,51 +11,15 @@ import pytest
 
 from lli.config import LLIConfig
 from lli.runner import (
-    _slugify,
+    RunResult,
     build_child_env,
-    make_run_dir,
     run_wrapped_command,
     wait_for_drain,
     write_run_metadata,
 )
+from lli.watch import WatchManager
 
-
-class TestSlugify:
-    """Test label slugification."""
-
-    def test_basic(self) -> None:
-        assert _slugify("codex-task") == "codex-task"
-
-    def test_spaces_and_specials_replaced(self) -> None:
-        assert _slugify("Fix The Bug! (v2)") == "Fix-The-Bug-v2"
-
-    def test_long_labels_truncated(self) -> None:
-        assert len(_slugify("a" * 100)) == 40
-
-    def test_empty_becomes_empty(self) -> None:
-        assert _slugify("!!!") == ""
-
-
-class TestMakeRunDir:
-    """Test run directory creation."""
-
-    def test_basic_without_label(self, tmp_path: Path) -> None:
-        run_dir = make_run_dir(tmp_path, None, now=datetime(2026, 1, 1, 12, 0, 0))
-        assert run_dir.name == "run_20260101_120000"
-        assert run_dir.is_dir()
-
-    def test_with_label(self, tmp_path: Path) -> None:
-        run_dir = make_run_dir(tmp_path, "codex", now=datetime(2026, 1, 1, 12, 0, 0))
-        assert run_dir.name == "run_20260101_120000_codex"
-
-    def test_collision_appends_suffix(self, tmp_path: Path) -> None:
-        now = datetime(2026, 1, 1, 12, 0, 0)
-        first = make_run_dir(tmp_path, None, now=now)
-        second = make_run_dir(tmp_path, None, now=now)
-        assert first != second
-        assert second.name == "run_20260101_120000_2"
-        third = make_run_dir(tmp_path, None, now=now)
-        assert third.name == "run_20260101_120000_3"
+SESSION_ID_RE = re.compile(r"^session_\d{8}_\d{6}_\d{6}$")
 
 
 class TestBuildChildEnv:
@@ -112,6 +77,24 @@ class TestWaitForDrain:
         assert await wait_for_drain(lambda: 0, timeout=0) is True
 
 
+class TestSessionIdFormat:
+    """Test collision-proof session/log naming in WatchManager."""
+
+    def test_session_id_contains_microseconds(self, tmp_path: Path) -> None:
+        mgr = WatchManager(output_dir=tmp_path, port=0)
+        mgr.initialize()
+        try:
+            session = mgr.start_recording()
+            assert SESSION_ID_RE.match(session.session_id), session.session_id
+        finally:
+            mgr.shutdown()
+
+    def test_global_log_name_contains_microseconds(self, tmp_path: Path) -> None:
+        mgr = WatchManager(output_dir=tmp_path, port=0)
+        name = mgr.global_log_path.name
+        assert re.match(r"^all_captured_\d{8}_\d{6}_\d{6}\.jsonl$", name), name
+
+
 class TestRunWrappedCommand:
     """Integration smoke tests (real proxy, no network traffic)."""
 
@@ -134,18 +117,16 @@ class TestRunWrappedCommand:
         assert result.proxy_port > 0
         assert result.requests_captured == 0
 
-        # Run directory structure
-        assert result.run_dir.name.startswith("run_")
-        assert result.run_dir.name.endswith("_smoke")
-        assert (result.run_dir / "run_meta.json").is_file()
-        assert result.session_dir is not None
+        # Session lives directly in the traces root, alongside watch sessions
+        assert result.session_dir.is_relative_to(tmp_path)
+        assert result.session_dir.parent == tmp_path
+        assert SESSION_ID_RE.match(result.session_id)
+
+        # Metadata lives inside the session directory
         assert (result.session_dir / "session_meta.json").is_file()
+        assert (result.session_dir / "run_meta.json").is_file()
 
-        # Global log lives inside the run dir (self-contained run)
-        assert result.run_dir.glob("all_captured_*.jsonl")
-
-        # Metadata content
-        meta = json.loads((result.run_dir / "run_meta.json").read_text(encoding="utf-8"))
+        meta = json.loads(result.metadata_path.read_text(encoding="utf-8"))
         assert meta["command"] == [sys.executable, "-c", "pass"]
         assert meta["label"] == "smoke"
         assert meta["exit_code"] == 0
@@ -162,33 +143,63 @@ class TestRunWrappedCommand:
         result = self._run(tmp_path, ["lli-definitely-not-a-command-xyz"])
         assert result.exit_code == 127
         # Session is still finalized for failed spawns
-        assert result.session_dir is not None
+        assert result.session_dir.is_dir()
 
     def test_runs_are_isolated(self, tmp_path: Path) -> None:
         first = self._run(tmp_path, [sys.executable, "-c", "pass"])
         second = self._run(tmp_path, [sys.executable, "-c", "pass"])
-        assert first.run_dir != second.run_dir
         assert first.session_dir != second.session_dir
-        # Each session lives inside its own run directory
-        assert first.session_dir is not None
-        assert second.session_dir is not None
-        assert first.session_dir.is_relative_to(first.run_dir)
-        assert second.session_dir.is_relative_to(second.run_dir)
-        assert not second.session_dir.is_relative_to(first.run_dir)
+        assert first.session_id != second.session_id
+        assert first.session_dir.is_relative_to(tmp_path)
+        assert second.session_dir.is_relative_to(tmp_path)
+        # Each run wrote its own metadata
+        assert first.metadata_path.is_file()
+        assert second.metadata_path.is_file()
+
+    def test_concurrent_runs_do_not_collide(self, tmp_path: Path) -> None:
+        """Two runs starting in the same second must not share sessions/logs."""
+
+        async def _two_runs():
+            return await asyncio.gather(
+                run_wrapped_command(
+                    [sys.executable, "-c", "pass"],
+                    config=LLIConfig(),
+                    output_root=tmp_path,
+                    drain_timeout=2.0,
+                ),
+                run_wrapped_command(
+                    [sys.executable, "-c", "pass"],
+                    config=LLIConfig(),
+                    output_root=tmp_path,
+                    drain_timeout=2.0,
+                ),
+            )
+
+        first, second = asyncio.run(_two_runs())
+
+        # Distinct sessions, both directly under the shared root
+        assert first.session_id != second.session_id
+        assert first.session_dir != second.session_dir
+        # Distinct global logs (one per run)
+        logs = list(tmp_path.glob("all_captured_*.jsonl"))
+        assert len(logs) == 2
+        # Both metas intact
+        for result in (first, second):
+            meta = json.loads(result.metadata_path.read_text(encoding="utf-8"))
+            assert meta["exit_code"] == 0
 
 
 class TestWriteRunMetadata:
     """Test metadata serialization."""
 
     def test_writes_valid_json(self, tmp_path: Path) -> None:
-        from lli.runner import RunResult
-
+        session_dir = tmp_path / "session_20260101_120000_123456"
+        session_dir.mkdir()
         result = RunResult(
             command=["claude", "-p", "hi"],
             label="demo",
-            run_dir=tmp_path,
-            session_id="session_20260101_120000",
-            session_dir=tmp_path / "session_20260101_120000",
+            session_id="session_20260101_120000_123456",
+            session_dir=session_dir,
             exit_code=0,
             started_at=datetime(2026, 1, 1, 12, 0, 0),
             ended_at=datetime(2026, 1, 1, 12, 0, 5),
@@ -197,10 +208,10 @@ class TestWriteRunMetadata:
             drained=True,
         )
         path = write_run_metadata(result)
-        assert path == tmp_path / "run_meta.json"
+        assert path == session_dir / "run_meta.json"
 
         meta = json.loads(path.read_text(encoding="utf-8"))
         assert meta["command"] == ["claude", "-p", "hi"]
+        assert meta["label"] == "demo"
         assert meta["requests_captured"] == 7
         assert meta["duration_seconds"] == 5.0
-        assert meta["session_dir"] == "session_20260101_120000"

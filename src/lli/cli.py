@@ -441,7 +441,7 @@ def stats(file: str) -> None:
 )
 @click.option(
     "--ui-port",
-    default=8000,
+    default=48080,
     show_default=True,
     type=int,
     help="Port for the web UI",
@@ -655,7 +655,7 @@ def watch(
     "output_root",
     type=click.Path(),
     default=None,
-    help="Root directory for run outputs (default: <traces>/runs)",
+    help="Traces root for session output (default: same as lli watch)",
 )
 @click.option(
     "--include",
@@ -709,11 +709,14 @@ def run(
     per-exchange request/response JSON files), and writes run metadata.
     Exits with the command's exit code.
 
-    Each run is isolated in its own directory:
+    The session lands directly in the traces directory alongside watch-mode
+    sessions (microsecond IDs keep concurrent runs collision-free), so it
+    appears in the web UI automatically:
 
-        <output-dir>/run_<timestamp>[_<label>]/
-            run_meta.json
-            session_<...>/ (per-exchange 00N_request/00N_response JSONs)
+        <output-dir>/session_<timestamp>_<usec>/
+            session_meta.json
+            run_meta.json     # command, label, exit code, duration, ...
+            001_request_*.json / 001_response_*.json / ...
 
     Examples:
 
@@ -770,14 +773,91 @@ def run(
     console.print()
     status = "interrupted" if result.interrupted else "finished"
     console.print(
-        f"[green]✔[/] Run [cyan]{result.run_dir.name}[/] {status} "
+        f"[green]✔[/] Session [cyan]{result.session_id}[/] {status} "
         f"(exit code {result.exit_code}, {result.requests_captured} requests captured)"
     )
-    if result.session_dir is not None:
-        console.print(f"  Session: [cyan]{result.session_dir}[/]")
-    console.print(f"  Metadata: [cyan]{result.run_dir / 'run_meta.json'}[/]")
+    console.print(f"  Session: [cyan]{result.session_dir}[/]")
+    console.print(f"  Metadata: [cyan]{result.metadata_path}[/]")
 
     sys.exit(result.exit_code)
+
+
+@main.command()
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host interface to bind the web UI (use 0.0.0.0 to expose on the network)",
+)
+@click.option(
+    "--port",
+    "-p",
+    default=48080,
+    show_default=True,
+    type=int,
+    help="Port for the web UI",
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    "output_dir",
+    type=click.Path(),
+    default=None,
+    help="Traces directory to serve (default: ./traces or OS-specific logs dir)",
+)
+def serve(
+    host: str,
+    port: int,
+    output_dir: str | None,
+) -> None:
+    """
+    Start the web UI as a standalone, long-running server.
+
+    Serves all captured sessions (from `lli watch` and `lli run`) and picks
+    up new ones automatically as they are processed. Keep this running in
+    one terminal and capture from any other terminal.
+
+    Examples:
+
+        lli serve
+
+        lli serve --port 48080 --output-dir ./traces
+    """
+    from lli.server import StaticTracesProvider, run_server
+
+    setup_logger("INFO")
+
+    if output_dir is None:
+        output_dir = str(get_default_trace_dir())
+
+    if _is_port_in_use(host, port):
+        ui_url = f"http://{reachable_host_for_listen_host(host)}:{port}"
+        console.print(
+            f"[red]Error:[/] Port {port} is already in use.\n"
+            f"  If a web UI is already running at {ui_url}, just reuse it;\n"
+            "  otherwise pick another port with --port."
+        )
+        sys.exit(1)
+
+    traces_dir = Path(output_dir)
+    provider = StaticTracesProvider(output_dir=traces_dir)
+
+    ui_url = f"http://{reachable_host_for_listen_host(host)}:{port}"
+    console.print(
+        Panel.fit(
+            f"[bold cyan]LLI Web UI[/]\n[dim]Standalone session viewer[/]\n\n"
+            f"Serving traces from: [cyan]{traces_dir.absolute()}[/]\n"
+            f"Analyze sessions at: [bold link={ui_url}]{ui_url}[/]\n\n"
+            f"[dim]New sessions from `lli watch` / `lli run` appear automatically "
+            "(Ctrl+C to stop).[/]",
+            border_style="cyan",
+        )
+    )
+
+    try:
+        run_server(provider, host=host, port=port)
+    except KeyboardInterrupt:
+        console.print("\n[cyan]Web UI stopped.[/]")
 
 
 def _display_watch_banner(

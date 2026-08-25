@@ -224,7 +224,9 @@ class WatchManager:
         self._session_seq = 1
 
         # Global log setup
-        self._global_log_name = f"all_captured_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+        # Microsecond suffix keeps files distinct when multiple capture
+        # processes (e.g. concurrent `lli run`) share the same output root.
+        self._global_log_name = f"all_captured_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jsonl"
         self._global_log_path = self.output_dir / self._global_log_name
         self._global_logger: GlobalLogger | None = None
 
@@ -322,16 +324,22 @@ class WatchManager:
             if not self._global_logger:
                 raise RuntimeError("WatchManager not initialized")
 
-            # Generate session ID (timestamp-based for easy identification)
-            # Ensure unique ID by bumping timestamp if directory already exists
+            # Generate session ID (timestamp-based for easy identification).
+            # A microsecond suffix makes IDs collision-proof even when several
+            # capture processes record into the same output directory
+            # concurrently (session directories are only created at processing
+            # time, so a plain-second timestamp could collide).
+            def _candidate_id(moment: datetime) -> str:
+                return f"session_{moment.strftime('%Y%m%d_%H%M%S')}_{moment.microsecond:06d}"
+
             timestamp = datetime.now()
-            session_id = f"session_{timestamp.strftime('%Y%m%d_%H%M%S')}"
+            session_id = _candidate_id(timestamp)
 
             while (self.output_dir / session_id).exists():
                 from datetime import timedelta
 
-                timestamp += timedelta(seconds=1)
-                session_id = f"session_{timestamp.strftime('%Y%m%d_%H%M%S')}"
+                timestamp += timedelta(microseconds=1)
+                session_id = _candidate_id(timestamp)
 
             # Write start marker
             start_marker = {
