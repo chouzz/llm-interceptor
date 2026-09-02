@@ -1,0 +1,23 @@
+{
+  "skill_name": "lli-trace-analysis",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I captured some LLM agent traffic with lli and the sessions are in /tmp/opencode/skill-eval/testdata/traces. Give me a per-session summary: which model was used, total input/output/cache tokens, total latency, number of exchanges, and any failed or unanswered requests. Then, for the session with the most exchanges, show a per-exchange breakdown (model, tokens, latency, tool calls, stop reason).",
+      "expected_output": "Accurate per-session table across all 3 sessions with correct normalized token totals (anthropic cache added, openai cache subset), correct latency sums, failed (429 in codex-review) and orphan (004) identified, per-exchange table for session_20260828_100000_000001 showing read_file tool call, finish_reason tool_calls/stop.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "In /tmp/opencode/skill-eval/testdata/traces I have captures from different agents. Identify which LLM API format each session uses (Anthropic Messages, OpenAI Chat Completions, or OpenAI Responses API), list every tool call made in each session with the exchange number it occurred in, and identify any requests that never received a response plus any HTTP errors.",
+      "expected_output": "Session ...354825 = Anthropic Messages (no tool calls); session ...000001 = OpenAI Chat Completions (tool call read_file at exchange 001); session ...000002 = OpenAI Responses API (function_call shell at exchange 001). Orphan: exchange 004 in ...000001. HTTP error: 429 at exchange 003 in ...000001. Also notes session ...000002 exchange 002 is incomplete (max_output_tokens).",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I want to run an experiment on this machine: capture everything claude-code sends to its LLM backend when running `claude -p 'explain this repo'`, then analyze the token usage afterwards. lli is not installed yet. Lay out exactly what you would do step by step, with the concrete commands, and note any caveats. Do NOT actually execute the capture (I don't want to burn tokens), just give me the plan.",
+      "expected_output": "Plan includes: checking/installing lli (uv tool install llm-interceptor or pip install llm-interceptor), using `lli run -- claude -p 'explain this repo'` (with optional --label) rather than watch mode, notes that no system-wide certificate installation is needed for lli run (CA auto-generated, trust injected into child), exit code propagation, where the session lands (traces/session_*/ with run_meta.json), and how the analysis would be done (token usage from NNN_response files / usage fields or a report script).",
+      "files": []
+    }
+  ]
+}

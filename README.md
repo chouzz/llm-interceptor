@@ -229,6 +229,20 @@ done
 See [`lli run` CLI reference](#lli-run) for all options (`--label`,
 `--output-dir`, `--include`, `--exclude`, `--drain-timeout`).
 
+## 🤖 Agent Skill: Let Your Coding Agent Analyze Traces
+
+This repo ships an agent skill at [`.agents/skills/lli-trace-analysis/`](.agents/skills/lli-trace-analysis/)
+that teaches coding agents (OpenCode, and any tool that reads the
+`.agents/skills` convention) to work with LLI captures:
+
+- summarize sessions (models, normalized token usage incl. cache, latency, tool calls, failed/orphan requests) via the bundled zero-dependency `lli_report.py`
+- look up exact JSON field paths per capture format (Anthropic Messages, OpenAI Chat Completions, OpenAI Responses) with ready-made jq snippets
+- set up lli and run capture experiments (`lli run`) even when lli is not installed yet
+
+OpenCode discovers it automatically when you work inside this repository; from
+elsewhere you can copy the directory into your project's `.agents/skills/` (or
+install it with a skills CLI). See the skill's `SKILL.md` for details.
+
 ## 🎬 How Watch Mode Works
 
 Watch mode uses a state machine with three states:
