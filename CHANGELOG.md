@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - 2026-09-07
+
+### Added
+
+- **OpenAI Responses API support** - Captures traffic from OpenAI's newer Responses API alongside Chat Completions (#91)
+- **`lli run` automated capture** - New non-interactive command that wraps any command (`claude -p`, `codex exec`, ...) with a private ephemeral proxy, injects proxy/CA trust into the child process, auto-processes the session, writes `run_meta.json` (command, label, exit code, duration), and exits with the child's exit code so it composes with scripts and CI (#92)
+- **Unified run sessions + standalone `lli serve`** - `lli run` sessions now land directly in the traces root alongside watch-mode sessions; new `lli serve` command runs the web UI as a standalone long-running server (default port 48080) that serves all sessions and picks up new ones automatically (#94)
+- **`lli-trace-analysis` agent skill** - Bundled agent skill (`.agents/skills/lli-trace-analysis/`) that teaches coding agents to analyze LLI captures — session summaries with normalized token usage, latency, and tool calls via a zero-dependency `lli_report.py`, per-provider JSON field references, and `lli run` experiment capture — installable with `npx skills add chouzz/llm-interceptor` (#96, #97)
+
+### Security
+
+- **Bearer credential masking** - `Authorization: Bearer ...` values are now masked in full, including tokens containing dots or base64/colon characters that previously leaked fragments into logs (#95)
+
+
 ## [2.9.5] - 2026-07-29
 
 ### Fixed
