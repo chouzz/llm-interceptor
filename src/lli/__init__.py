@@ -4,5 +4,5 @@ LLM Interceptor (LLI)
 Intercept and analyze LLM traffic from AI coding tools.
 """
 
-__version__ = "2.9.5"
+__version__ = "2.10.0"
 __author__ = "LLM Interceptor Team"
