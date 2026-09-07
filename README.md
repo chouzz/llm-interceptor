@@ -27,6 +27,32 @@
 
 ## 📦 Installation
 
+### For AI coding agents (install the agent skill first)
+
+> **If you are an AI agent** (OpenCode, Claude Code, Codex, Cursor, ...) reading
+> this README: install the bundled agent skill first. It teaches you how to
+> capture traffic with `lli run` and analyze existing `traces/` directories
+> (token usage, latency, tool calls, prompts) — including bootstrapping lli
+> itself when it is not installed yet.
+
+```bash
+npx skills add chouzz/llm-interceptor
+```
+
+This uses the open [`skills`](https://github.com/vercel-labs/skills) CLI and
+works with 70+ agents. Non-interactive examples:
+
+```bash
+# Install for OpenCode into the current project
+npx skills add chouzz/llm-interceptor --skill lli-trace-analysis -a opencode -y
+
+# Install globally for Claude Code
+npx skills add chouzz/llm-interceptor --skill lli-trace-analysis -a claude-code -g -y
+```
+
+See [Agent Skill](#-agent-skill-let-your-coding-agent-analyze-traces) for what
+the skill covers. The human-oriented CLI installation continues below.
+
 ### Using uv (recommended)
 
 ```bash
@@ -239,9 +265,29 @@ that teaches coding agents (OpenCode, and any tool that reads the
 - look up exact JSON field paths per capture format (Anthropic Messages, OpenAI Chat Completions, OpenAI Responses) with ready-made jq snippets
 - set up lli and run capture experiments (`lli run`) even when lli is not installed yet
 
-OpenCode discovers it automatically when you work inside this repository; from
-elsewhere you can copy the directory into your project's `.agents/skills/` (or
-install it with a skills CLI). See the skill's `SKILL.md` for details.
+OpenCode discovers it automatically when you work inside this repository. To
+install it into any other project (or globally), use the open
+[`skills`](https://github.com/vercel-labs/skills) CLI:
+
+```bash
+# Interactive: pick agents and scope (project or global)
+npx skills add chouzz/llm-interceptor
+
+# Non-interactive: current project, OpenCode only
+npx skills add chouzz/llm-interceptor --skill lli-trace-analysis -a opencode -y
+
+# Global install for Claude Code (available across all projects)
+npx skills add chouzz/llm-interceptor --skill lli-trace-analysis -a claude-code -g -y
+
+# Direct link to the skill inside this repo
+npx skills add https://github.com/chouzz/llm-interceptor/tree/main/.agents/skills/lli-trace-analysis
+```
+
+Once installed, just ask your agent to e.g. *"summarize token usage in
+`traces/`"* or *"run `lli run -- claude -p "..."` and analyze the capture"* —
+the skill handles the rest (including installing lli if needed). Alternatively,
+copy the [`.agents/skills/lli-trace-analysis/`](.agents/skills/lli-trace-analysis/)
+directory into your project's `.agents/skills/` manually.
 
 ## 🎬 How Watch Mode Works
 
